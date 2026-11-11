@@ -20,6 +20,7 @@ export const ID_PREFIXES = {
   event: 'evt',
   delivery: 'dlv',
   attempt: 'att',
+  request: 'req',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIXES;

@@ -1,5 +1,7 @@
 # Relay
 
+[![CI](https://github.com/anikcse19/Relay/actions/workflows/ci.yml/badge.svg)](https://github.com/anikcse19/Relay/actions/workflows/ci.yml)
+
 **Reliable, multi-tenant webhook & event delivery platform.**
 Send one API call — Relay fans it out to every subscriber, signs it, retries
 failures with backoff, and shows you exactly what happened to every attempt.

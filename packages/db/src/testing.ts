@@ -5,20 +5,18 @@
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
+import type { Database, DatabaseHandle, SqlExecutor } from './client.js';
 import { migrationsFolder } from './paths.js';
 import * as schema from './schema.js';
 
-export interface SqlExecutor {
-  query<R = Record<string, unknown>>(text: string, params?: unknown[]): Promise<{ rows: R[] }>;
-}
+export type { SqlExecutor };
 
-export async function createTestDb() {
+export async function createTestDb(): Promise<DatabaseHandle> {
   const client = new PGlite();
   const db = drizzle(client, { schema });
   await migrate(db, { migrationsFolder });
   return {
-    db,
-    /** Raw SQL executor with the same shape as `pg.Pool#query`. */
+    db: db as unknown as Database,
     sql: client as unknown as SqlExecutor,
     close: () => client.close(),
   };
