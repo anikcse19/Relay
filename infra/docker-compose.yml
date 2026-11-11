@@ -1,0 +1,25 @@
+# Production-like stack for the Oracle Cloud free VM (and GitHub Codespaces).
+# NOT required for local development — local dev uses Neon + PGlite (see ADR-0002).
+# Application services (api, worker, realtime) and observability (Prometheus,
+# Grafana) are added in later phases.
+
+name: relay
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: relay
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: relay
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U relay']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
