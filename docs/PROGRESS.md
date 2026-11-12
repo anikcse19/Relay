@@ -4,19 +4,25 @@ Roadmap for Relay (~2 hours/day, ~12 weeks). Updated at the end of every work se
 
 ## ▶ Next up
 
-**Phase 1 · Session 6: Dashboard, API keys page + polish** (stay on branch `feat/dashboard-shell`)
+**Open a PR for `feat/dashboard-shell` (Sessions 5 + 6) and merge it** (no migration → no Neon branch).
+Before merging, click through in a browser: create key (copy, "I've saved this", curl), revoke in
+Development and in Production (type-to-confirm), ⌘K palette, sidebar collapse, light/dark theme.
 
-- `/[org]/[env]/api-keys`: list (prefix, name, created, last used, status), create dialog with the
-  show-once secret flow (Copy + "I've saved this" checkbox, guidelines §6), revoke with confirm.
-  Owner/admin only for create/revoke (members see a read-only list + who to ask).
-- Enable "API keys" in the sidebar; Overview checklist step 1 becomes data-driven.
-- `StatusBadge` (guidelines §2.2) for key status; TanStack Query for client mutations.
-- ⌘K command palette (navigate, switch environment, toggle theme); collapsible sidebar.
-- Then: open the PR for `feat/dashboard-shell` (Sessions 5 + 6).
+**Phase 1 · Sessions 7–8: Endpoints, events and the delivery inspector** (branch `feat/endpoints-events`)
+
+- API: endpoints CRUD (`/v1/endpoints`, API key **and** session auth), URL validation, signing
+  secret shown once + rotate; list events and deliveries with **cursor pagination** (ids are
+  time-sortable); `GET /v1/deliveries/:id` with its attempts.
+- Basic SSRF guard on endpoint URLs at creation (https only in production, no private IPs);
+  full connect-time guard stays in Phase 2.
+- Dashboard: Endpoints page, Events list (filters in the URL), delivery inspector drawer
+  (attempt timeline, request/response, plain-English error classes).
+- Overview checklist steps 2–4 become data-driven.
 
 **Local dev ports:** port 3000 is taken by another app on this machine. Run the API with
 `PORT=3100 BETTER_AUTH_URL=http://localhost:3100` (root `.env`) and set
-`API_URL=http://localhost:3100` in `apps/dashboard/.env.local`.
+`API_URL=http://localhost:3100` + `NEXT_PUBLIC_API_PUBLIC_URL=http://localhost:3100` in
+`apps/dashboard/.env.local`.
 
 ## Roadmap
 
@@ -42,7 +48,9 @@ Roadmap for Relay (~2 hours/day, ~12 weeks). Updated at the end of every work se
 - [x] **Session 5:** Dashboard foundations (`apps/dashboard`): tokens + dark/light themes, UI
       primitives, sign-in/up, app shell (org/env switchers, dev banner), Overview, runtime
       same-origin proxy (ADR-0010)
-- [ ] **Session 6:** Dashboard: API keys page, StatusBadge, ⌘K palette, collapsible sidebar
+- [x] **Session 6:** Dashboard: API keys page (show-once secret + curl, optimistic revoke,
+      type-to-confirm in production), StatusBadge, RelativeTime, TanStack Query, ⌘K palette,
+      collapsible sidebar, data-driven checklist
 - [ ] **Sessions 7–8:** Dashboard: endpoints, events list, delivery inspector
 
 ### Phase 2: Reliability
@@ -75,3 +83,4 @@ Roadmap for Relay (~2 hours/day, ~12 weeks). Updated at the end of every work se
 | 2026-11-12 | Phase 1 · S3 | Branch `feat/api-keys`. API key management + auth, `POST /v1/events` (one-transaction fan-out, idempotency, atomicity test), ADR-0008. 88 tests passing.                                                   |
 | 2026-11-12 | Phase 1 · S4 | Branch `feat/delivery-worker`. `apps/worker` with retry policy, error classes, redirect/blocked-port handling, ADR-0009. Live E2E on Neon: delivered + signature verified in ~1.5 s. 136 tests passing.    |
 | 2026-11-12 | Phase 1 · S5 | Branch `feat/dashboard-shell` (not merged yet). Next.js 16 dashboard foundations; caught build-time rewrite baking → runtime `proxy.ts`; ADR-0010. Live E2E via dashboard → API → Neon. 144 tests passing. |
+| 2026-11-12 | Phase 1 · S6 | Branch `feat/dashboard-shell`. API keys page + ⌘K palette + collapsible sidebar; live E2E of key lifecycle through the dashboard proxy. 156 tests passing.                                                 |

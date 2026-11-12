@@ -1,8 +1,12 @@
+import { cookies } from 'next/headers';
 import type { ReactNode } from 'react';
 import { Logo } from '@/components/logo';
 import type { Me } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { type Workspace, workspacePath } from '@/lib/workspace';
+import { CommandPalette } from './command-palette';
+import { SIDEBAR_COOKIE } from './constants';
+import { Sidebar } from './sidebar';
 import { SidebarNav } from './sidebar-nav';
 import { UserMenu } from './user-menu';
 import { EnvSwitcher, OrgSwitcher } from './workspace-switchers';
@@ -12,7 +16,7 @@ import { EnvSwitcher, OrgSwitcher } from './workspace-switchers';
  * §3.1. Development is visually loud (amber border + pill); production is
  * the neutral default, so the unusual state is the one that stands out.
  */
-export function AppShell({
+export async function AppShell({
   me,
   workspace,
   children,
@@ -24,6 +28,7 @@ export function AppShell({
   const { org, env } = workspace;
   const isDev = env.kind === 'development';
   const base = workspacePath(org, env);
+  const collapsed = (await cookies()).get(SIDEBAR_COOKIE)?.value === 'collapsed';
 
   return (
     <div className={cn('flex min-h-dvh flex-col', isDev && 'border-t-2 border-warning')}>
@@ -49,15 +54,14 @@ export function AppShell({
             Development
           </span>
         )}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <CommandPalette orgs={me.organizations} org={org} env={env} />
           <UserMenu name={me.user.name} email={me.user.email} />
         </div>
       </header>
 
       <div className="flex flex-1">
-        <aside className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-56 shrink-0 border-r p-3 md:block">
-          <SidebarNav base={base} />
-        </aside>
+        <Sidebar base={base} initialCollapsed={collapsed} />
         <main id="main" className="min-w-0 flex-1">
           {/* Small screens: the same navigation as a horizontal strip. */}
           <SidebarNav
