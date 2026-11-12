@@ -1,9 +1,9 @@
 'use client';
 
-import { Filter, Loader2, Radio, Send, X } from 'lucide-react';
+import { ArrowUp, Filter, Loader2, Radio, RotateCw, Send, X } from 'lucide-react';
 import type { Route } from 'next';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CopyableId } from '@/components/copyable-id';
 import { RelativeTime } from '@/components/relative-time';
 import { StatusBadge } from '@/components/status-badge';
@@ -11,6 +11,9 @@ import { ErrorAlert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { LiveIndicator } from '@/features/live/live-indicator';
+import { useLive } from '@/features/live/live-provider';
+import { unseenEvents } from '@/features/live/messages';
 import type { DeliveryStatus, Environment, EventSummary, Page, Role } from '@/lib/types';
 import { useEvents, useSendTestEvent } from './api';
 import { DeliveryInspector } from './delivery-inspector';
@@ -54,7 +57,25 @@ export function EventsView({
   );
   const sendTest = useSendTestEvent(environment.id);
   const canSend = MANAGE_ROLES.includes(role);
-  const rows = events.data?.pages.flatMap((p) => p.data) ?? [];
+  const rows = useMemo(() => events.data?.pages.flatMap((p) => p.data) ?? [], [events.data]);
+
+  // Live tail (guidelines §4.2): new events wait behind a pill instead of
+  // pushing rows down under the reader; delivery counts update in place.
+  const live = useLive();
+  const unseen = useMemo(
+    () => unseenEvents(live?.newEvents ?? [], new Set(rows.map((e) => e.id)), type),
+    [live?.newEvents, rows, type],
+  );
+  const showLatest = async () => {
+    await events.refetch();
+    live?.markCaughtUp();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  // Nothing on screen to disturb: show new events straight away.
+  const emptyWithNews = !events.isPending && rows.length === 0 && unseen.length > 0;
+  useEffect(() => {
+    if (emptyWithNews) void events.refetch();
+  }, [emptyWithNews, events]);
 
   function navigate(updates: Record<string, string | null>, mode: 'push' | 'replace' = 'push') {
     const params = new URLSearchParams(searchParams.toString());
@@ -76,23 +97,26 @@ export function EventsView({
             Select one to inspect its payload and each delivery attempt.
           </p>
         </div>
-        {canSend && (
-          <Button
-            variant="secondary"
-            disabled={sendTest.isPending}
-            onClick={async () => {
-              const { id } = await sendTest.mutateAsync();
-              navigate({ type: null, event: id, delivery: null });
-            }}
-          >
-            {sendTest.isPending ? (
-              <Loader2 className="animate-spin" aria-hidden />
-            ) : (
-              <Send aria-hidden />
-            )}
-            Send test event
-          </Button>
-        )}
+        <div className="flex flex-wrap items-center gap-3">
+          <LiveIndicator />
+          {canSend && (
+            <Button
+              variant="secondary"
+              disabled={sendTest.isPending}
+              onClick={async () => {
+                const { id } = await sendTest.mutateAsync();
+                navigate({ type: null, event: id, delivery: null });
+              }}
+            >
+              {sendTest.isPending ? (
+                <Loader2 className="animate-spin" aria-hidden />
+              ) : (
+                <Send aria-hidden />
+              )}
+              Send test event
+            </Button>
+          )}
+        </div>
       </div>
 
       {sendTest.error && (
@@ -105,6 +129,24 @@ export function EventsView({
           navigate({ type: next ?? null, event: null, delivery: null }, 'replace')
         }
       />
+
+      {(unseen.length > 0 || live?.stale) && rows.length > 0 && (
+        <div className="sticky top-16 z-10 -mb-3 flex justify-center">
+          <Button size="sm" className="rounded-full shadow-md" onClick={showLatest}>
+            {unseen.length > 0 ? (
+              <>
+                <ArrowUp aria-hidden />
+                {unseen.length >= 100 ? '99+' : unseen.length} new event
+                {unseen.length === 1 ? '' : 's'}
+              </>
+            ) : (
+              <>
+                <RotateCw aria-hidden /> Show latest
+              </>
+            )}
+          </Button>
+        </div>
+      )}
 
       {events.error ? (
         <ErrorAlert>Couldn&apos;t load events: {events.error.message}</ErrorAlert>

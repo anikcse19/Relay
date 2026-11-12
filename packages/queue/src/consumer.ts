@@ -69,6 +69,8 @@ export class Consumer<T = unknown> {
   private loop: Promise<void> | null = null;
   private readonly inFlight = new Set<Promise<void>>();
   private wake: (() => void) | null = null;
+  /** A poke that arrived while busy: the next idle wait returns at once. */
+  private poked = false;
 
   constructor(
     private readonly transport: QueueTransport,
@@ -92,6 +94,16 @@ export class Consumer<T = unknown> {
     this.loop = this.run();
   }
 
+  /**
+   * "New work may be available": stops waiting and polls now. Called on a
+   * NOTIFY from the producer (ADR-0016), so new jobs start within
+   * milliseconds instead of after the idle backoff. Safe to call any time.
+   */
+  poke(): void {
+    this.poked = true;
+    this.wake?.();
+  }
+
   async stop(): Promise<void> {
     this.running = false;
     this.wake?.();
@@ -111,6 +123,7 @@ export class Consumer<T = unknown> {
           if (count > 0) this.emit({ type: 'reclaimed', count });
         }
 
+        this.poked = false; // this poll covers any poke received so far
         const free = this.opts.concurrency - this.inFlight.size;
         const jobs =
           free > 0
@@ -145,6 +158,7 @@ export class Consumer<T = unknown> {
   }
 
   private idle(ms: number): Promise<void> {
+    if (this.poked && this.running) return Promise.resolve();
     return new Promise<void>((resolve) => {
       const timer = setTimeout(done, ms);
       function done() {

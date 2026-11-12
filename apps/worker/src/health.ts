@@ -7,6 +7,7 @@ import {
   inArray,
   lte,
   notifications,
+  publish,
   sql,
 } from '@relay/db';
 import { newId } from '@relay/shared';
@@ -93,14 +94,20 @@ async function notify(
       body: `Deliveries are succeeding again after ${failures} failures in a row. Held deliveries are being sent.`,
     },
   };
+  const id = newId('notification');
   await tx.insert(notifications).values({
-    id: newId('notification'),
+    id,
     organizationId: facts.organizationId,
     environmentId: facts.environmentId,
     endpointId,
     endpointUrl: facts.url,
     kind,
     ...text[kind],
+  });
+  await publish(tx, {
+    type: 'notification.created',
+    environmentId: facts.environmentId,
+    notificationId: id,
   });
 }
 

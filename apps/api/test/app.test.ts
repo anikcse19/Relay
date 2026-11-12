@@ -86,6 +86,11 @@ describe('API (database down)', () => {
     app = await boot({
       db: {} as DatabaseHandle['db'],
       sql: { query: () => Promise.reject(new Error('connect ECONNREFUSED 10.0.0.5:5432')) },
+      listener: {
+        listen: () => Promise.reject(new Error('connect ECONNREFUSED 10.0.0.5:5432')),
+        onReconnect: () => {},
+        close: async () => {},
+      },
       close: async () => {},
     });
   });

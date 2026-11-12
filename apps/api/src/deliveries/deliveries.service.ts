@@ -10,6 +10,8 @@ import {
   eq,
   events,
   lt,
+  notifyJobs,
+  publish,
   queueJobs,
   sql,
 } from '@relay/db';
@@ -126,7 +128,12 @@ export class DeliveriesService {
   async replay(tenant: Tenant, id: string) {
     await this.db.transaction(async (tx) => {
       const [row] = await tx
-        .select({ status: deliveries.status, endpointStatus: endpoints.status })
+        .select({
+          status: deliveries.status,
+          endpointStatus: endpoints.status,
+          eventId: deliveries.eventId,
+          attemptCount: deliveries.attemptCount,
+        })
         .from(deliveries)
         .innerJoin(endpoints, eq(endpoints.id, deliveries.endpointId))
         .where(and(eq(deliveries.id, id), eq(deliveries.environmentId, tenant.environmentId)))
@@ -156,6 +163,16 @@ export class DeliveriesService {
           dedupeKey: id,
         })
         .onConflictDoNothing();
+      await notifyJobs(tx, QUEUES.delivery);
+      await publish(tx, {
+        type: 'delivery.updated',
+        environmentId: tenant.environmentId,
+        deliveryId: id,
+        eventId: row.eventId,
+        from: row.status,
+        to: 'pending',
+        attemptCount: row.attemptCount,
+      });
     });
     return this.get(tenant, id);
   }

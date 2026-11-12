@@ -20,5 +20,6 @@ ADRs are immutable once accepted; a changed decision gets a new ADR that superse
 | [0013](0013-endpoint-health-circuit-breaker.md)    | Endpoint health, circuit breaker and auto-disable        | Accepted |
 | [0014](0014-per-endpoint-rate-limits.md)           | Per-endpoint rate limits with GCRA                       | Accepted |
 | [0015](0015-notifications-and-retention.md)        | In-app health notifications and data retention           | Accepted |
+| [0016](0016-live-updates-listen-notify-sse.md)     | Live updates with LISTEN/NOTIFY and Server-Sent Events   | Accepted |
 
 Template: [`template.md`](template.md)

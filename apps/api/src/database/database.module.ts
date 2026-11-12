@@ -12,6 +12,8 @@ import type { DatabaseHandle } from '@relay/db';
 export const DB = Symbol('DB');
 /** Raw SQL executor, for hand-tuned queries and health checks. */
 export const SQL = Symbol('SQL');
+/** LISTEN/NOTIFY subscriptions (`Listener` from @relay/db). */
+export const LISTENER = Symbol('LISTENER');
 const HANDLE = Symbol('DATABASE_HANDLE');
 
 @Injectable()
@@ -39,9 +41,10 @@ export class DatabaseModule {
         { provide: HANDLE, useValue: handle },
         { provide: DB, useValue: handle.db },
         { provide: SQL, useValue: handle.sql },
+        { provide: LISTENER, useValue: handle.listener },
         DatabaseLifecycle,
       ],
-      exports: [DB, SQL],
+      exports: [DB, SQL, LISTENER],
     };
   }
 }

@@ -1,6 +1,7 @@
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
+import { createPgListener, type Listener } from './live.js';
 import * as schema from './schema.js';
 
 export interface DbOptions {
@@ -21,11 +22,22 @@ export interface SqlExecutor {
 export interface DatabaseHandle {
   db: Database;
   sql: SqlExecutor;
+  /** LISTEN/NOTIFY subscriptions (ADR-0016); one dedicated connection, opened on first use. */
+  listener: Listener;
   close(): Promise<void>;
 }
 
 export function createDb({ connectionString, max = 10 }: DbOptions): DatabaseHandle {
   const pool = new pg.Pool({ connectionString, max });
   const db = drizzle(pool, { schema });
-  return { db, sql: pool, close: () => pool.end() };
+  const listener = createPgListener(connectionString);
+  return {
+    db,
+    sql: pool,
+    listener,
+    close: async () => {
+      await listener.close();
+      await pool.end();
+    },
+  };
 }

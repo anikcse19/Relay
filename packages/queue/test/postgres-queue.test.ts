@@ -117,6 +117,61 @@ describe('PostgresQueue', () => {
 });
 
 describe('Consumer', () => {
+  it('poke() starts a newly enqueued job at once instead of after the idle wait', async () => {
+    const started: number[] = [];
+    const consumer = new Consumer(queue, {
+      queue: 'q',
+      concurrency: 1,
+      minPollMs: 60_000, // without a poke, nothing would run for a minute
+      maxPollMs: 60_000,
+      handler: async () => {
+        started.push(Date.now());
+      },
+    });
+    consumer.start();
+    await wait(50); // first (empty) poll done; now idling for 60 s
+
+    const enqueuedAt = Date.now();
+    await queue.enqueue('q', {});
+    consumer.poke();
+    const deadline = Date.now() + 2_000;
+    while (started.length === 0 && Date.now() < deadline) await wait(5);
+    await consumer.stop();
+
+    expect(started).toHaveLength(1);
+    expect(started[0]! - enqueuedAt).toBeLessThan(1_000);
+  });
+
+  it('a poke that arrives mid-poll is not lost', async () => {
+    const consumer = new Consumer(queue, {
+      queue: 'q',
+      concurrency: 1,
+      minPollMs: 60_000,
+      maxPollMs: 60_000,
+      handler: async () => {},
+    });
+    let ran = false;
+    const original = queue.dequeue.bind(queue);
+    let polls = 0;
+    queue.dequeue = (async (...args: Parameters<typeof queue.dequeue>) => {
+      polls++;
+      if (polls === 1) {
+        await queue.enqueue('q', {}); // job lands while this poll is in flight…
+        consumer.poke(); // …and its poke arrives before the consumer goes idle
+        return [];
+      }
+      const jobs = await original(...args);
+      if (jobs.length) ran = true;
+      return jobs;
+    }) as typeof queue.dequeue;
+
+    consumer.start();
+    const deadline = Date.now() + 2_000;
+    while (!ran && Date.now() < deadline) await wait(5);
+    await consumer.stop();
+    expect(ran).toBe(true);
+  });
+
   it('processes jobs, retries transient failures and dead-letters permanent ones', async () => {
     const events: ConsumerEvent[] = [];
     const seen = new Map<string, number>();
