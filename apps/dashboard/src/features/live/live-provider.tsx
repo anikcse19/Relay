@@ -17,6 +17,8 @@ import { applyStatusChange, type LiveMessage, type LiveStatus, patchEventPages }
 
 /** Buffered new events are capped: the pill says "99+" and a refresh catches up. */
 const MAX_BUFFER = 100;
+/** Analytics refresh at most this often while deliveries stream in. */
+const ANALYTICS_THROTTLE_MS = 3_000;
 
 interface LiveContextValue {
   status: LiveStatus;
@@ -82,6 +84,22 @@ export function LiveProvider({
     return () => document.removeEventListener('visibilitychange', onVisibility);
   }, []);
 
+  // Analytics move with every attempt: refresh at most every few seconds
+  // (trailing), and only charts that are on screen (active queries) refetch.
+  const analyticsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshAnalytics = useCallback(() => {
+    analyticsTimer.current ??= setTimeout(() => {
+      analyticsTimer.current = null;
+      void queryClient.invalidateQueries({ queryKey: queryKeys.analytics.all(environmentId) });
+    }, ANALYTICS_THROTTLE_MS);
+  }, [queryClient, environmentId]);
+  useEffect(
+    () => () => {
+      if (analyticsTimer.current) clearTimeout(analyticsTimer.current);
+    },
+    [],
+  );
+
   /** Refetch what's on screen; lists are only flagged, so rows don't jump. */
   const resync = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.notifications.list(environmentId) });
@@ -90,8 +108,9 @@ export function LiveProvider({
       predicate: (q) =>
         q.queryKey[0] === 'events' && q.queryKey[1] === environmentId && q.queryKey[2] === 'detail',
     });
+    refreshAnalytics();
     setStale(true);
-  }, [queryClient, environmentId]);
+  }, [queryClient, environmentId, refreshAnalytics]);
 
   const handle = useCallback(
     (message: LiveMessage) => {
@@ -116,6 +135,7 @@ export function LiveProvider({
           void queryClient.invalidateQueries({
             queryKey: queryKeys.events.detail(environmentId, eventId),
           });
+          refreshAnalytics();
           break;
         }
         case 'notification.created':
@@ -125,7 +145,7 @@ export function LiveProvider({
           break;
       }
     },
-    [queryClient, environmentId],
+    [queryClient, environmentId, refreshAnalytics],
   );
 
   useEffect(() => {

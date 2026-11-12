@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { EventsView } from '@/features/events/events-view';
-import { eventsQueryString, normaliseTypeFilter } from '@/features/events/query';
+import { eventsQueryString, parseEventFilters } from '@/features/events/query';
 import { apiGet } from '@/lib/api.server';
 import type { EventSummary, Page } from '@/lib/types';
 import { workspacePath } from '@/lib/workspace';
@@ -16,10 +16,10 @@ export default async function EventsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { org, env } = await requireWorkspace(params);
-  const type = normaliseTypeFilter((await searchParams).type);
+  const filters = parseEventFilters(await searchParams);
   // Server-rendered first page; the client (TanStack Query) paginates and refreshes.
   const page = await apiGet<Page<EventSummary>>(
-    `/v1/environments/${env.id}/events?${eventsQueryString({ type })}`,
+    `/v1/environments/${env.id}/events?${eventsQueryString(filters)}`,
   );
 
   return (
@@ -29,7 +29,7 @@ export default async function EventsPage({
         role={org.role}
         endpointsHref={workspacePath(org, env, '/endpoints')}
         initialPage={page}
-        initialType={type}
+        initialFilters={filters}
       />
     </div>
   );

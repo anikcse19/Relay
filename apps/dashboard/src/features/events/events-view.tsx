@@ -15,10 +15,19 @@ import { LiveIndicator } from '@/features/live/live-indicator';
 import { useLive } from '@/features/live/live-provider';
 import { unseenEvents } from '@/features/live/messages';
 import type { DeliveryStatus, Environment, EventSummary, Page, Role } from '@/lib/types';
+import { useEndpointList } from '@/features/endpoints/api';
+import { formatTimeRange } from '@/lib/time';
 import { useEvents, useSendTestEvent } from './api';
 import { DeliveryInspector } from './delivery-inspector';
 import { EventPanel } from './event-panel';
-import { normaliseTypeFilter } from './query';
+import {
+  type EventFilters,
+  FILTER_KEYS,
+  hasFilters,
+  parseEventFilters,
+  sameFilters,
+  searchParamsRecord,
+} from './query';
 
 const MANAGE_ROLES: Role[] = ['owner', 'admin'];
 /** Order in which per-status counts are shown in a row. */
@@ -26,34 +35,41 @@ const COUNT_ORDER: DeliveryStatus[] = ['failed', 'retrying', 'pending', 'succeed
 
 /**
  * Events list. Everything that defines the view lives in the URL
- * (guidelines §10): `?type=` filter, `?event=` / `?delivery=` drawer
- * selection, so it's shareable and survives refresh and Back.
+ * (guidelines §10): filters (`?type=`, plus `?from=&to=&endpointId=&status=`
+ * from analytics drill-downs), `?event=` / `?delivery=` drawer selection, so
+ * it's shareable and survives refresh and Back.
  */
 export function EventsView({
   environment,
   role,
   endpointsHref,
   initialPage,
-  initialType,
+  initialFilters,
 }: {
   environment: Environment;
   role: Role;
   endpointsHref: Route;
   initialPage: Page<EventSummary> | null;
-  initialType?: string;
+  initialFilters: EventFilters;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const type = normaliseTypeFilter(searchParams.get('type') ?? undefined);
+  const filters = useMemo(
+    () => parseEventFilters(searchParamsRecord(searchParams)),
+    [searchParams],
+  );
+  const type = filters.type;
+  // The live tail only applies to "everything from now on", optionally by type.
+  const tailing = !filters.from && !filters.to && !filters.endpointId && !filters.status;
   const selectedEvent = searchParams.get('event');
   const selectedDelivery = searchParams.get('delivery');
 
   const events = useEvents(
     environment.id,
-    { type },
-    // Server-rendered page only matches the filter it was rendered with.
-    type === initialType ? initialPage : null,
+    filters,
+    // Server-rendered page only matches the filters it was rendered with.
+    sameFilters(filters, initialFilters) ? initialPage : null,
   );
   const sendTest = useSendTestEvent(environment.id);
   const canSend = MANAGE_ROLES.includes(role);
@@ -63,8 +79,9 @@ export function EventsView({
   // pushing rows down under the reader; delivery counts update in place.
   const live = useLive();
   const unseen = useMemo(
-    () => unseenEvents(live?.newEvents ?? [], new Set(rows.map((e) => e.id)), type),
-    [live?.newEvents, rows, type],
+    () =>
+      tailing ? unseenEvents(live?.newEvents ?? [], new Set(rows.map((e) => e.id)), type) : [],
+    [live?.newEvents, rows, type, tailing],
   );
   const showLatest = async () => {
     await events.refetch();
@@ -76,6 +93,8 @@ export function EventsView({
   useEffect(() => {
     if (emptyWithNews) void events.refetch();
   }, [emptyWithNews, events]);
+
+  const clearFilters = Object.fromEntries(FILTER_KEYS.map((key) => [key, null]));
 
   function navigate(updates: Record<string, string | null>, mode: 'push' | 'replace' = 'push') {
     const params = new URLSearchParams(searchParams.toString());
@@ -105,7 +124,7 @@ export function EventsView({
               disabled={sendTest.isPending}
               onClick={async () => {
                 const { id } = await sendTest.mutateAsync();
-                navigate({ type: null, event: id, delivery: null });
+                navigate({ ...clearFilters, event: id, delivery: null });
               }}
             >
               {sendTest.isPending ? (
@@ -123,14 +142,26 @@ export function EventsView({
         <ErrorAlert>Couldn&apos;t send the test event: {sendTest.error.message}</ErrorAlert>
       )}
 
-      <TypeFilter
-        value={type}
-        onChange={(next) =>
-          navigate({ type: next ?? null, event: null, delivery: null }, 'replace')
-        }
-      />
+      <div className="flex flex-wrap items-center gap-2">
+        <TypeFilter
+          value={type}
+          onChange={(next) =>
+            navigate({ type: next ?? null, event: null, delivery: null }, 'replace')
+          }
+        />
+        <DrillDownChips
+          environmentId={environment.id}
+          filters={filters}
+          onRemove={(keys) =>
+            navigate(
+              { ...Object.fromEntries(keys.map((k) => [k, null])), event: null, delivery: null },
+              'replace',
+            )
+          }
+        />
+      </div>
 
-      {(unseen.length > 0 || live?.stale) && rows.length > 0 && (
+      {(unseen.length > 0 || (tailing && live?.stale)) && rows.length > 0 && (
         <div className="sticky top-16 z-10 -mb-3 flex justify-center">
           <Button size="sm" className="rounded-full shadow-md" onClick={showLatest}>
             {unseen.length > 0 ? (
@@ -156,9 +187,9 @@ export function EventsView({
         </p>
       ) : rows.length === 0 ? (
         <EmptyState
-          filtered={type !== undefined}
+          filtered={hasFilters(filters)}
           canSend={canSend}
-          onClear={() => navigate({ type: null }, 'replace')}
+          onClear={() => navigate(clearFilters, 'replace')}
         />
       ) : (
         <div className="flex flex-col gap-3">
@@ -260,6 +291,89 @@ function DeliveryCounts({ counts }: { counts: Record<DeliveryStatus, number> }) 
   );
 }
 
+function Chip({ label, value, onRemove }: { label: string; value: string; onRemove: () => void }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border bg-muted/50 py-0.5 pl-3 pr-1 text-xs">
+      {label}: {/* Times are formatted in the viewer's zone, which the server can't know. */}
+      <span className="font-medium" suppressHydrationWarning>
+        {value}
+      </span>
+      <button
+        type="button"
+        onClick={onRemove}
+        className="rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+        aria-label={`Remove filter: ${label} ${value}`}
+      >
+        <X className="size-3.5" aria-hidden />
+      </button>
+    </span>
+  );
+}
+
+const STATUS_LABEL: Record<DeliveryStatus, string> = {
+  pending: 'Pending',
+  retrying: 'Retrying',
+  succeeded: 'Succeeded',
+  failed: 'Failed',
+  cancelled: 'Cancelled',
+};
+
+/** Chips for the filters an analytics drill-down applies (time range, endpoint, status). */
+function DrillDownChips({
+  environmentId,
+  filters,
+  onRemove,
+}: {
+  environmentId: string;
+  filters: EventFilters;
+  onRemove: (keys: (keyof EventFilters)[]) => void;
+}) {
+  const endpoints = useEndpointList(environmentId);
+  const endpointUrl = endpoints.data?.find((e) => e.id === filters.endpointId)?.url;
+  const chips = [
+    (filters.from || filters.to) && (
+      <Chip
+        key="time"
+        label="Created"
+        value={formatTimeRange(filters.from, filters.to)}
+        onRemove={() => onRemove(['from', 'to'])}
+      />
+    ),
+    filters.endpointId && (
+      <Chip
+        key="endpoint"
+        label="Endpoint"
+        value={endpointUrl ? new URL(endpointUrl).host : filters.endpointId}
+        onRemove={() => onRemove(['endpointId'])}
+      />
+    ),
+    filters.status && (
+      <Chip
+        key="status"
+        label="Delivery"
+        value={STATUS_LABEL[filters.status]}
+        onRemove={() => onRemove(['status'])}
+      />
+    ),
+  ].filter(Boolean);
+  if (chips.length === 0) return null;
+  return (
+    <>
+      {chips}
+      {chips.length > 1 && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 text-xs"
+          onClick={() => onRemove(['from', 'to', 'endpointId', 'status'])}
+        >
+          Clear
+        </Button>
+      )}
+    </>
+  );
+}
+
 /** Filter chip (guidelines §4.1): applied filters show as removable chips. */
 function TypeFilter({
   value,
@@ -270,27 +384,11 @@ function TypeFilter({
 }) {
   const [draft, setDraft] = useState('');
 
-  if (value) {
-    return (
-      <div className="flex items-center gap-2">
-        <span className="inline-flex items-center gap-1.5 rounded-full border bg-muted/50 py-0.5 pl-3 pr-1 text-xs">
-          Type: <span className="font-mono">{value}</span>
-          <button
-            type="button"
-            onClick={() => onChange(undefined)}
-            className="rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-            aria-label={`Remove filter: type ${value}`}
-          >
-            <X className="size-3.5" aria-hidden />
-          </button>
-        </span>
-      </div>
-    );
-  }
+  if (value) return <Chip label="Type" value={value} onRemove={() => onChange(undefined)} />;
 
   return (
     <form
-      className="flex max-w-sm items-center gap-2"
+      className="flex w-full max-w-sm items-center gap-2 sm:w-96"
       onSubmit={(e) => {
         e.preventDefault();
         const next = draft.trim();
@@ -335,9 +433,9 @@ function EmptyState({
   if (filtered) {
     return (
       <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed px-6 py-10 text-center">
-        <p className="text-sm text-muted-foreground">No events of this type yet.</p>
+        <p className="text-sm text-muted-foreground">No events match these filters.</p>
         <Button variant="secondary" size="sm" onClick={onClear}>
-          Clear filter
+          Clear filters
         </Button>
       </div>
     );

@@ -5,7 +5,7 @@ import { apiFetch } from '@/lib/api.client';
 import { queryKeys } from '@/lib/query-keys';
 import type { DeliveryDetail, EventDetail, EventSummary, Page } from '@/lib/types';
 import { useLive } from '@/features/live/live-provider';
-import { eventsQueryString } from './query';
+import { type EventFilters, eventsQueryString } from './query';
 
 const envPath = (environmentId: string) => `/v1/environments/${environmentId}` as const;
 
@@ -28,7 +28,7 @@ const inFlight = (e: EventSummary) => e.deliveryCounts.pending + e.deliveryCount
  */
 export function useEvents(
   environmentId: string,
-  filters: { type?: string },
+  filters: EventFilters,
   initialPage: Page<EventSummary> | null,
 ) {
   const poll = usePollingFallback();

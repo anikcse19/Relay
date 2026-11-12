@@ -51,9 +51,10 @@ export class LiveController {
     const pending: string[] = [];
     let raw: FastifyReply['raw'] | null = null;
     const write = (chunk: string) => (raw ? raw.write(chunk) : pending.push(chunk));
-    const unsubscribe = await this.hub.subscribe(tenant.environmentId, (event, data) =>
-      write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
-    );
+    const unsubscribe = await this.hub.subscribe(tenant.environmentId, {
+      send: (event, data) => write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
+      close: () => raw?.end(), // shutdown: the client reconnects after `retry`
+    });
 
     reply.hijack(); // we own the socket from here; Fastify won't send a reply
     raw = reply.raw;

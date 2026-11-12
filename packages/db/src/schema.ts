@@ -24,6 +24,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -373,6 +374,42 @@ export const deliveryAttempts = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('delivery_attempts_delivery_idx').on(t.deliveryId, t.attemptNumber)],
+);
+
+/**
+ * Hourly delivery analytics per endpoint (ADR-0017), maintained by the
+ * worker in each attempt's transaction, so it always agrees with
+ * `delivery_attempts`. Every attempt counts as exactly one outcome; latency
+ * (attempts that got an HTTP response) is a fixed histogram whose buckets
+ * are `LATENCY_BOUNDS_MS` in @relay/shared, so percentiles merge across
+ * hours and endpoints. Kept longer than raw history (small rows).
+ */
+export const deliveryStatsHourly = pgTable(
+  'delivery_stats_hourly',
+  {
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    environmentId: text('environment_id')
+      .notNull()
+      .references(() => environments.id, { onDelete: 'cascade' }),
+    endpointId: text('endpoint_id')
+      .notNull()
+      .references(() => endpoints.id, { onDelete: 'cascade' }),
+    /** Start of the UTC hour. */
+    hour: timestamp('hour', { withTimezone: true }).notNull(),
+    /** Attempts that got a 2xx. */
+    succeeded: integer('succeeded').notNull().default(0),
+    /** Failed attempts that scheduled a retry. */
+    retried: integer('retried').notNull().default(0),
+    /** Failed attempts with no retry left: the delivery failed. */
+    failed: integer('failed').notNull().default(0),
+    latencyHistogram: integer('latency_histogram').array().notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.endpointId, t.hour] }),
+    index('delivery_stats_env_hour_idx').on(t.environmentId, t.hour),
+  ],
 );
 
 // ─── Notifications ──────────────────────────────────────────────────────────

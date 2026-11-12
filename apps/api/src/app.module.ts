@@ -1,5 +1,6 @@
 import { type DynamicModule, Module } from '@nestjs/common';
 import type { DatabaseHandle } from '@relay/db';
+import { AnalyticsModule } from './analytics/analytics.module.js';
 import { ApiKeysModule } from './api-keys/api-keys.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { ConfigModule } from './config/config.module.js';
@@ -34,6 +35,7 @@ export class AppModule {
         EventsModule,
         DeliveriesModule,
         NotificationsModule,
+        AnalyticsModule,
         LiveModule,
       ],
       controllers: [HealthController, MeController],

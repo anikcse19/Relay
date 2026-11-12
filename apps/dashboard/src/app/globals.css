@@ -30,6 +30,21 @@
   --info: oklch(0.52 0.14 250);
 
   --radius: 0.5rem;
+
+  /*
+   * Chart marks (ADR-0017), validated with the dataviz palette checks.
+   * Outcome stack = fixed status steps, same in both modes, stacked
+   * succeeded → retried → failed (green/amber/red passes CVD separation in
+   * that order; a darker amber collapses into green for protan readers).
+   * Latency p50/p95/p99 = one-hue ordinal ramp, stepped per mode.
+   */
+  --chart-succeeded: #0ca30c;
+  --chart-retried: #fab219;
+  --chart-failed: #d03b3b;
+  --chart-p50: #86b6ef;
+  --chart-p95: #2a78d6;
+  --chart-p99: #104281;
+  --chart-rate: #2a78d6;
 }
 
 .dark {
@@ -50,6 +65,11 @@
   --warning: oklch(0.8 0.15 75);
   --danger: oklch(0.7 0.18 25);
   --info: oklch(0.74 0.12 250);
+
+  --chart-p50: #1c5cab;
+  --chart-p95: #3987e5;
+  --chart-p99: #9ec5f4;
+  --chart-rate: #3987e5;
 }
 
 @theme inline {

@@ -154,3 +154,21 @@ describe('live stream (SSE)', () => {
     expect(hub.size).toBe(0);
   });
 });
+
+describe('live stream shutdown', () => {
+  it('ends open streams so the server can close (restarts and deploys never hang)', async () => {
+    const app = await boot(await createTestDb());
+    await app.listen({ port: 0, host: '127.0.0.1' });
+    const user = await signUpUser(app, 'shutdown@example.com');
+    const stream = openStream(
+      `${await app.getUrl()}/v1/environments/${user.developmentEnvId}/stream`,
+      { cookie: user.cookie },
+    );
+    await stream.waitFor((e) => e.event === 'ready');
+
+    const closed = app.close().then(() => 'closed');
+    const timeout = new Promise((r) => setTimeout(() => r('hung'), 5_000));
+    expect(await Promise.race([closed, timeout])).toBe('closed');
+    await stream.done; // the client saw its stream end (EventSource would reconnect)
+  });
+});

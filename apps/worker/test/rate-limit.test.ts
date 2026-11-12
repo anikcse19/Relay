@@ -72,17 +72,19 @@ describe('rate limiting in Postgres', () => {
 
   it('acquireSlot: burst, then a wait of about one interval', async () => {
     const s = await seedDelivery(db, receiver.url, { rateLimitPerSecond: 2 });
-    expect(await acquireSlot(db, s.endpointId, 2)).toBe(0);
-    expect(await acquireSlot(db, s.endpointId, 2)).toBe(0);
-    const wait = await acquireSlot(db, s.endpointId, 2);
-    expect(wait).toBeGreaterThan(400);
-    expect(wait).toBeLessThanOrEqual(500);
+    // One transaction freezes now(): exact GCRA arithmetic, however slow the machine.
+    await db.transaction(async (tx) => {
+      expect(await acquireSlot(tx, s.endpointId, 2)).toBe(0);
+      expect(await acquireSlot(tx, s.endpointId, 2)).toBe(0);
+      expect(await acquireSlot(tx, s.endpointId, 2)).toBe(500);
+    });
   });
 
   it('acquireSlot: concurrent workers can never exceed the limit', async () => {
     const s = await seedDelivery(db, receiver.url, { rateLimitPerSecond: 5 });
-    const results = await Promise.all(
-      Array.from({ length: 20 }, () => acquireSlot(db, s.endpointId, 5)),
+    // Interleaved claims at one instant (frozen now()): exactly the burst gets through.
+    const results = await db.transaction((tx) =>
+      Promise.all(Array.from({ length: 20 }, () => acquireSlot(tx, s.endpointId, 5))),
     );
     expect(results.filter((w) => w === 0)).toHaveLength(5);
   });

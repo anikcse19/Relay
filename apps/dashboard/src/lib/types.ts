@@ -162,3 +162,29 @@ export interface Notification {
   readAt: string | null;
   createdAt: string;
 }
+
+export type AnalyticsRange = '24h' | '7d' | '30d';
+
+/** Every attempt counts as exactly one of succeeded / retried / failed (ADR-0017). */
+export interface DeliveryStats {
+  attempts: number;
+  succeeded: number;
+  retried: number;
+  failed: number;
+  /** 0–1; `null` without attempts. */
+  successRate: number | null;
+  /** Latency percentiles (ms) of attempts that got a response. */
+  p50: number | null;
+  p95: number | null;
+  p99: number | null;
+}
+
+export interface Analytics {
+  range: AnalyticsRange;
+  from: string;
+  to: string;
+  bucketMs: number;
+  totals: DeliveryStats;
+  series: (DeliveryStats & { start: string })[];
+  endpoints: (DeliveryStats & { endpointId: string; url: string })[];
+}

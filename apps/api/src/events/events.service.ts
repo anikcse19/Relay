@@ -10,6 +10,7 @@ import {
   endpoints,
   eq,
   events,
+  gte,
   inArray,
   isNull,
   lt,
@@ -19,11 +20,11 @@ import {
   queueJobs,
   sql,
 } from '@relay/db';
-import { type DeliveryJobPayload, newId, QUEUES } from '@relay/shared';
+import { type DeliveryJobPayload, idAt, newId, QUEUES } from '@relay/shared';
 import { type Page, toPage } from '../common/pagination.js';
 import { DB } from '../database/database.module.js';
 import type { Tenant } from '../tenancy/tenant.guard.js';
-import type { CreateEventInput } from './events.schema.js';
+import type { CreateEventInput, ListEventsQuery } from './events.schema.js';
 
 export interface IngestResult {
   event: typeof events.$inferSelect;
@@ -151,8 +152,16 @@ export class EventsService {
    */
   async list(
     tenant: Tenant,
-    query: { limit: number; cursor?: string; type?: string },
+    query: Omit<ListEventsQuery, 'limit'> & { limit: number },
   ): Promise<Page<EventSummary>> {
+    // Ids are time-sortable, so a time range is a range on the (environment_id, id) index.
+    const byDelivery =
+      query.endpointId || query.status
+        ? sql`exists (select 1 from ${deliveries}
+                       where ${deliveries.eventId} = ${events.id}
+                       ${query.endpointId ? sql`and ${deliveries.endpointId} = ${query.endpointId}` : sql``}
+                       ${query.status ? sql`and ${deliveries.status} = ${query.status}` : sql``})`
+        : undefined;
     const rows = await this.db
       .select({ id: events.id, type: events.eventType, createdAt: events.createdAt })
       .from(events)
@@ -160,6 +169,9 @@ export class EventsService {
         and(
           eq(events.environmentId, tenant.environmentId),
           query.type ? eq(events.eventType, query.type) : undefined,
+          query.from ? gte(events.id, idAt('event', Date.parse(query.from))) : undefined,
+          query.to ? lt(events.id, idAt('event', Date.parse(query.to))) : undefined,
+          byDelivery,
           query.cursor ? lt(events.id, query.cursor) : undefined,
         ),
       )

@@ -158,6 +158,19 @@ export class EventsController {
   @ApiQuery(paginationQueryDocs[0])
   @ApiQuery(paginationQueryDocs[1])
   @ApiQuery({ name: 'type', required: false, description: 'Only events of this exact type' })
+  @ApiQuery({ name: 'from', required: false, description: 'Created at or after (ISO 8601)' })
+  @ApiQuery({ name: 'to', required: false, description: 'Created before (ISO 8601)' })
+  @ApiQuery({
+    name: 'endpointId',
+    required: false,
+    description: 'Only events delivered to this endpoint',
+  })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ['pending', 'retrying', 'succeeded', 'failed', 'cancelled'],
+    description: 'Only events with a delivery in this status (to `endpointId`, if given)',
+  })
   @ApiOkResponse({ schema: pageSchema(eventSummarySchema) })
   list(@CurrentTenant() tenant: Tenant, @Query() query: unknown) {
     return this.events.list(tenant, listEventsSchema.parse(query));

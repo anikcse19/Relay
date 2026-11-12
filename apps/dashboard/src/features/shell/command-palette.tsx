@@ -3,6 +3,7 @@
 import { Command } from 'cmdk';
 import {
   ArrowRightLeft,
+  BarChart3,
   Building2,
   KeyRound,
   LayoutDashboard,
@@ -117,6 +118,13 @@ export function CommandPalette({
               onSelect={() => go(workspacePath(org, env, '/endpoints'))}
             >
               Endpoints
+            </Item>
+            <Item
+              icon={<BarChart3 />}
+              keywords={['charts', 'metrics', 'latency', 'success rate']}
+              onSelect={() => go(workspacePath(org, env, '/analytics'))}
+            >
+              Analytics
             </Item>
             <Item
               icon={<KeyRound />}

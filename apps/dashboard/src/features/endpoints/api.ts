@@ -17,16 +17,24 @@ export interface EndpointInput {
   rateLimitPerSecond: number | null;
 }
 
+const fetchEndpoints = async (environmentId: string) =>
+  (await apiFetch<Page<Endpoint>>(`${endpointsPath(environmentId)}?limit=${ENDPOINTS_PAGE_SIZE}`))
+    .data;
+
 export function useEndpoints(environmentId: string, initialData: Endpoint[]) {
   return useQuery({
     queryKey: queryKeys.endpoints.list(environmentId),
-    queryFn: async () =>
-      (
-        await apiFetch<Page<Endpoint>>(
-          `${endpointsPath(environmentId)}?limit=${ENDPOINTS_PAGE_SIZE}`,
-        )
-      ).data,
+    queryFn: () => fetchEndpoints(environmentId),
     initialData,
+  });
+}
+
+/** The same list, fetched on demand (for filters and labels on other pages). */
+export function useEndpointList(environmentId: string) {
+  return useQuery({
+    queryKey: queryKeys.endpoints.list(environmentId),
+    queryFn: () => fetchEndpoints(environmentId),
+    staleTime: 60_000,
   });
 }
 

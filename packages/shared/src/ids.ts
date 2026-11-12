@@ -66,6 +66,14 @@ export function newId(kind: IdKind, now?: number): string {
   return `${ID_PREFIXES[kind]}_${ulid(now)}`;
 }
 
+/**
+ * The smallest id of `kind` created at `ms`: a bound for time-range queries
+ * on id columns (`id >= idAt(from) AND id < idAt(to)`), using the id index.
+ */
+export function idAt(kind: IdKind, ms: number): string {
+  return `${ID_PREFIXES[kind]}_${encodeTime(Math.floor(ms))}${'0'.repeat(RANDOM_LEN)}`;
+}
+
 const ULID_RE = /^[0-9A-HJKMNP-TV-Z]{26}$/;
 
 export function isId(value: string, kind: IdKind): boolean {

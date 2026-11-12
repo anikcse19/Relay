@@ -33,7 +33,8 @@ export function gcra(
  * now, otherwise how many milliseconds to wait before trying again.
  */
 export async function acquireSlot(
-  db: Database,
+  /** The database, or a transaction (where `now()` is fixed: used by tests for exact timing). */
+  db: Pick<Database, 'select' | 'update'>,
   endpointId: string,
   ratePerSecond: number,
 ): Promise<number> {

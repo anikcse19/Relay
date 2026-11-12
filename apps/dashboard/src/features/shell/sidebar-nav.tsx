@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  BarChart3,
   BookOpen,
   KeyRound,
   LayoutDashboard,
@@ -27,6 +28,7 @@ const ITEMS: NavItem[] = [
   { label: 'Overview', path: '', icon: LayoutDashboard },
   { label: 'Events', path: '/events', icon: Radio },
   { label: 'Endpoints', path: '/endpoints', icon: Webhook },
+  { label: 'Analytics', path: '/analytics', icon: BarChart3 },
   { label: 'Event types', path: null, icon: Tags },
   { label: 'API keys', path: '/api-keys', icon: KeyRound },
 ];

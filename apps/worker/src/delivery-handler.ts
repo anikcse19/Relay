@@ -37,6 +37,7 @@ import {
   recordSuccess,
 } from './health.js';
 import { acquireSlot } from './rate-limit.js';
+import { recordAttemptStats } from './stats.js';
 
 export const USER_AGENT = 'Relay-Webhooks/1.0 (+https://docs.relay.dev/webhooks)';
 /** After a secret rotation, deliveries are signed with both secrets for this long. */
@@ -257,6 +258,13 @@ export async function processDelivery(
     } else {
       autoDisabled = (await recordFailure(tx, row.endpointId, health)).disabled;
     }
+    await recordAttemptStats(
+      tx,
+      row,
+      // A failure that auto-disabled the endpoint has no retry left.
+      decision.status === 'retrying' ? (autoDisabled ? 'failed' : 'retried') : decision.status,
+      result.statusCode === null ? null : result.durationMs,
+    );
     // Delivered to dashboards when this transaction commits (ADR-0016).
     await publish(tx, {
       type: 'delivery.updated',
