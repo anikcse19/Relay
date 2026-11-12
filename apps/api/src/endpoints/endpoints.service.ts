@@ -8,6 +8,7 @@ import {
   eq,
   inArray,
   lt,
+  notifyJobs,
   queueJobs,
   sql,
 } from '@relay/db';
@@ -193,6 +194,7 @@ export class EndpointsService {
           order by ${deliveries.id}
           on conflict do nothing
         `);
+        await notifyJobs(tx, QUEUES.delivery);
       }
       return toPublicEndpoint(row!);
     });

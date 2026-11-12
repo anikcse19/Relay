@@ -1,5 +1,6 @@
 import type { DatabaseHandle } from '@relay/db';
 import { Consumer, type ConsumerEvent, PostgresQueue } from '@relay/queue';
+import { JOBS_CHANNEL, type Unlisten } from '@relay/db';
 import { type BackoffPolicy, type DeliveryJobPayload, QUEUES, type UrlPolicy } from '@relay/shared';
 import type { Logger } from 'pino';
 import { createDeliveryHandler } from './delivery-handler.js';
@@ -52,6 +53,29 @@ export function startWorker(options: WorkerOptions): { stop: () => Promise<void>
   });
 
   consumer.start();
+
+  // Wake on NOTIFY instead of waiting for the next poll (ADR-0016). Polling
+  // stays as the safety net, so a lost notification only costs latency.
+  let unlisten: Unlisten | null = null;
+  let stopped = false;
+  let listenRetry: NodeJS.Timeout | null = null;
+  const listenForJobs = () => {
+    database.listener
+      .listen(JOBS_CHANNEL, (queue) => {
+        if (queue === QUEUES.delivery) consumer.poke();
+      })
+      .then((u) => {
+        if (stopped) void u();
+        else unlisten = u;
+      })
+      .catch((error: unknown) => {
+        logger.warn({ err: error }, 'LISTEN for new jobs failed; polling only, retrying in 10 s');
+        if (!stopped) listenRetry = setTimeout(listenForJobs, 10_000);
+      });
+  };
+  listenForJobs();
+  // Jobs may have been enqueued while the LISTEN connection was down.
+  database.listener.onReconnect(() => consumer.poke());
   const maintenance =
     options.retentionDays === undefined
       ? null
@@ -67,6 +91,9 @@ export function startWorker(options: WorkerOptions): { stop: () => Promise<void>
 
   return {
     stop: async () => {
+      stopped = true;
+      if (listenRetry) clearTimeout(listenRetry);
+      await unlisten?.();
       await Promise.all([consumer.stop(), maintenance?.stop()]);
       logger.info('Worker stopped');
     },

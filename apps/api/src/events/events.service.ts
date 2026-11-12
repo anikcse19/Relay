@@ -13,7 +13,9 @@ import {
   inArray,
   isNull,
   lt,
+  notifyJobs,
   or,
+  publish,
   queueJobs,
   sql,
 } from '@relay/db';
@@ -102,7 +104,10 @@ export class EventsService {
           ),
         );
 
-      if (subscribed.length === 0) return { event: created, replayed: false, deliveryCount: 0 };
+      if (subscribed.length === 0) {
+        await announce(tx, created, 0);
+        return { event: created, replayed: false, deliveryCount: 0 };
+      }
 
       const now = new Date();
       const rows = await tx
@@ -131,8 +136,11 @@ export class EventsService {
             })),
           )
           .onConflictDoNothing();
+        // Wakes idle workers now instead of on their next poll (ADR-0016).
+        await notifyJobs(tx, QUEUES.delivery);
       }
 
+      await announce(tx, created, rows.length);
       return { event: created, replayed: false, deliveryCount: rows.length };
     });
   }
@@ -216,6 +224,22 @@ export class EventsService {
 
     return { ...event, deliveries: sent };
   }
+}
+
+type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
+
+/** Live "new event" message, delivered to dashboards when the ingest transaction commits. */
+function announce(tx: Tx, event: typeof events.$inferSelect, pending: number) {
+  return publish(tx, {
+    type: 'event.created',
+    environmentId: event.environmentId,
+    event: {
+      id: event.id,
+      type: event.eventType,
+      createdAt: event.createdAt.toISOString(),
+      deliveryCounts: { ...emptyCounts(), pending },
+    },
+  });
 }
 
 type DeliveryStatus = (typeof deliveries.$inferSelect)['status'];

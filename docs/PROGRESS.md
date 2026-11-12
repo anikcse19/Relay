@@ -4,18 +4,20 @@ Roadmap for Relay (~2 hours/day, ~12 weeks). Updated at the end of every work se
 
 ## ▶ Next up
 
-**1. Open a PR for `feat/notifications` (Session 12) and merge it.** Migration
-`0004_notifications` is **already applied to Neon `main`** (developer chose main again). Before
-merging, in the browser: the bell in the header (unread badge, "All quiet" empty state, an alert
-opens the Endpoints page, "Mark all read").
+**1. Open a PR for `feat/live-tail` (Session 13) and merge it** (no migration). Before merging,
+in the browser: Events page shows ● Live; "Send test event" → its delivery badge flips to
+Succeeded without a reload; send events from curl while scrolled down → "↑ N new events" pill
+(rows don't move); Pause/Resume; hide the tab and come back (resync); the bell updates when an
+endpoint starts failing.
 
-**2. Phase 3 · Session 13: Live tail.** Postgres `LISTEN/NOTIFY` → API WebSocket (session-auth,
-environment-scoped) → dashboard Events list updates live: "↑ N new events" pill (never shifts
-what the user is reading), ● Live / ◌ Reconnecting… / ○ Offline indicator, pause/resume, auto-pause
-when the tab is hidden (guidelines §4.2). The worker/API `NOTIFY` on event ingest + delivery
-state changes; the bell and the inspector switch from polling to push. Also brings
-time-to-first-attempt under 1 s (worker wakes on NOTIFY instead of polling). ADR-0016.
-No migration expected. Check :3001/:3100 before any build (memory: dev stack hot-reload).
+**2. Phase 3 · Session 14: Analytics.** Success rate and latency (p50/p95/p99) per endpoint over
+time, deliveries stacked by status (guidelines §4.5); every chart drills into the filtered
+events list. Likely an hourly rollup table (`delivery_stats_hourly`) maintained by the worker
+in the attempt transaction → **migration** → ask: Neon branch or `main`. Check :3001/:3100
+before any build. Use the dataviz skill for chart design. ADR-0017.
+
+**Deployment note (from ADR-0016):** latency is dominated by DB round trips (≈ 90 ms from this
+Mac to Neon `ap-southeast-1`). The Oracle VM must be in **Singapore**, same region as Neon.
 
 **Local dev ports:** port 3000 is taken by another app on this machine. Run the API with
 `PORT=3100 BETTER_AUTH_URL=http://localhost:3100` (root `.env`) and set
@@ -72,9 +74,14 @@ No migration expected. Check :3001/:3100 before any build (memory: dev stack hot
       disabled / recovered, once each), notifications API + header bell, hourly retention
       (`RETENTION_DAYS`, batched, advisory-locked, ULID range cutoff) (ADR-0015)
 
-### Phase 3: Real-time & UX
+### Phase 3: Real-time & UX (in progress)
 
-- [ ] Live tail (LISTEN/NOTIFY → WebSocket), analytics charts, UI polish
+- [x] **Session 13:** Live updates: transactional `pg_notify` from ingest/worker/replay,
+      reconnecting listener, API `LiveHub` + SSE stream (session or API key), worker wakes on
+      NOTIFY, dashboard `LiveProvider` (in-place count updates, "↑ N new events" pill,
+      Live/Reconnecting/Offline/Paused, polling only as fallback) (ADR-0016)
+- [ ] **Session 14:** Analytics charts (success rate, latency percentiles, status mix)
+- [ ] UI polish pass (density toggle, keyboard shortcuts, mobile layouts)
 
 ### Phase 4: Developer platform
 
@@ -105,3 +112,4 @@ No migration expected. Check :3001/:3100 before any build (memory: dev stack hot
 | 2026-11-12 | Phase 2 · S10 | Branch `feat/endpoint-health`. Health + circuit breaker + auto-disable, queue deferral fix, ADR-0013. Vitest timeouts for queue/db too. 275 tests passing (3 full runs). Migration pending on a Neon branch.                                              |
 | 2026-11-12 | Phase 2 · S11 | Branch `feat/rate-limits`. GCRA rate limits, ADR-0014. Migration 0003 applied to Neon `main`. Live: 10 events at 2/s limit → 5.7 s, none dropped. 284 tests passing (2 full runs).                                                                        |
 | 2026-11-12 | Phase 2 · S12 | Branch `feat/notifications`. Notifications + bell + retention, ADR-0015. Migration 0004 applied to Neon `main`. Live: failing alert → half-open probe → recovered alert; retention pass on Neon clean. Phase 2 complete. 296 tests passing (2 full runs). |
+| 2026-11-12 | Phase 3 · S13 | Branch `feat/live-tail`. LISTEN/NOTIFY + SSE live updates, worker wake-up, ADR-0016. Live via dashboard proxy on Neon: event on stream at commit, delivered ≈ 0.65 s later (RTT-bound, ≈ 90 ms to Singapore). 310 tests passing (2 full runs).            |

@@ -4,12 +4,21 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 import { apiFetch } from '@/lib/api.client';
 import { queryKeys } from '@/lib/query-keys';
 import type { DeliveryDetail, EventDetail, EventSummary, Page } from '@/lib/types';
+import { useLive } from '@/features/live/live-provider';
 import { eventsQueryString } from './query';
 
 const envPath = (environmentId: string) => `/v1/environments/${environmentId}` as const;
 
-/** Polling cadence while something is still in flight. Replaced by push in Phase 3 (live tail). */
+/**
+ * Fallback polling while something is in flight. Only used when the live
+ * stream isn't connected (paused, reconnecting, offline): live messages
+ * update the cache otherwise (ADR-0016).
+ */
 const IN_FLIGHT_POLL_MS = 2_000;
+
+function usePollingFallback(): boolean {
+  return useLive()?.status !== 'live';
+}
 
 const inFlight = (e: EventSummary) => e.deliveryCounts.pending + e.deliveryCounts.retrying > 0;
 
@@ -22,6 +31,7 @@ export function useEvents(
   filters: { type?: string },
   initialPage: Page<EventSummary> | null,
 ) {
+  const poll = usePollingFallback();
   return useInfiniteQuery({
     queryKey: queryKeys.events.list(environmentId, filters),
     queryFn: ({ pageParam }) =>
@@ -33,16 +43,18 @@ export function useEvents(
     ...(initialPage && { initialData: { pages: [initialPage], pageParams: [undefined] } }),
     // Keep delivery counts fresh while the newest events are still being delivered.
     refetchInterval: (query) =>
-      query.state.data?.pages[0]?.data.some(inFlight) ? IN_FLIGHT_POLL_MS : false,
+      poll && query.state.data?.pages[0]?.data.some(inFlight) ? IN_FLIGHT_POLL_MS : false,
   });
 }
 
 export function useEvent(environmentId: string, id: string | null) {
+  const poll = usePollingFallback();
   return useQuery({
     queryKey: queryKeys.events.detail(environmentId, id ?? ''),
     queryFn: () => apiFetch<EventDetail>(`${envPath(environmentId)}/events/${id}`),
     enabled: id !== null,
     refetchInterval: (query) =>
+      poll &&
       query.state.data?.deliveries.some((d) => d.status === 'pending' || d.status === 'retrying')
         ? IN_FLIGHT_POLL_MS
         : false,
@@ -50,13 +62,14 @@ export function useEvent(environmentId: string, id: string | null) {
 }
 
 export function useDelivery(environmentId: string, id: string | null) {
+  const poll = usePollingFallback();
   return useQuery({
     queryKey: queryKeys.deliveries.detail(environmentId, id ?? ''),
     queryFn: () => apiFetch<DeliveryDetail>(`${envPath(environmentId)}/deliveries/${id}`),
     enabled: id !== null,
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      return status === 'pending' || status === 'retrying' ? IN_FLIGHT_POLL_MS : false;
+      return poll && (status === 'pending' || status === 'retrying') ? IN_FLIGHT_POLL_MS : false;
     },
   });
 }

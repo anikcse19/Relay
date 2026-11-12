@@ -7,6 +7,7 @@ import {
   eq,
   events,
   inArray,
+  publish,
   sql,
 } from '@relay/db';
 import { DeferError, type Job, RetryLaterError } from '@relay/queue';
@@ -98,6 +99,7 @@ export async function processDelivery(
   const [row] = await db
     .select({
       organizationId: deliveries.organizationId,
+      environmentId: deliveries.environmentId,
       status: deliveries.status,
       attemptCount: deliveries.attemptCount,
       waitMs: sql<number>`greatest(0, ceil(extract(epoch from (${deliveries.nextAttemptAt} - now())) * 1000))::int`,
@@ -131,12 +133,26 @@ export async function processDelivery(
   }
 
   if (row.endpointStatus === 'disabled') {
-    await db
-      .update(deliveries)
-      .set({ status: 'cancelled', nextAttemptAt: null })
-      .where(
-        and(eq(deliveries.id, deliveryId), inArray(deliveries.status, ['pending', 'retrying'])),
-      );
+    await db.transaction(async (tx) => {
+      const cancelled = await tx
+        .update(deliveries)
+        .set({ status: 'cancelled', nextAttemptAt: null })
+        .where(
+          and(eq(deliveries.id, deliveryId), inArray(deliveries.status, ['pending', 'retrying'])),
+        )
+        .returning({ id: deliveries.id });
+      if (cancelled.length > 0) {
+        await publish(tx, {
+          type: 'delivery.updated',
+          environmentId: row.environmentId,
+          deliveryId,
+          eventId: row.eventId,
+          from: row.status,
+          to: 'cancelled',
+          attemptCount: row.attemptCount,
+        });
+      }
+    });
     return 'cancelled';
   }
   if (row.endpointStatus === 'paused') return 'held';
@@ -235,12 +251,24 @@ export async function processDelivery(
       responseBody: result.responseBody,
     });
 
+    let autoDisabled = false;
     if (decision.status === 'succeeded') {
       await recordSuccess(tx, row.endpointId, health);
-      return { autoDisabled: false };
+    } else {
+      autoDisabled = (await recordFailure(tx, row.endpointId, health)).disabled;
     }
-    const { disabled } = await recordFailure(tx, row.endpointId, health);
-    return { autoDisabled: disabled };
+    // Delivered to dashboards when this transaction commits (ADR-0016).
+    await publish(tx, {
+      type: 'delivery.updated',
+      environmentId: row.environmentId,
+      deliveryId,
+      eventId: row.eventId,
+      from: row.status,
+      // Auto-disabling cancelled this delivery along with the endpoint's queue.
+      to: autoDisabled && decision.status === 'retrying' ? 'cancelled' : decision.status,
+      attemptCount: row.attemptCount + 1,
+    });
+    return { autoDisabled };
   });
 
   if (!recorded) return 'superseded';

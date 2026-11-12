@@ -9,6 +9,7 @@ import { DeliveriesModule } from './deliveries/deliveries.module.js';
 import { EndpointsModule } from './endpoints/endpoints.module.js';
 import { EventsModule } from './events/events.module.js';
 import { HealthController } from './health/health.controller.js';
+import { LiveModule } from './live/live.module.js';
 import { MeController } from './me/me.controller.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
 import { TenancyModule } from './tenancy/tenancy.module.js';
@@ -33,6 +34,7 @@ export class AppModule {
         EventsModule,
         DeliveriesModule,
         NotificationsModule,
+        LiveModule,
       ],
       controllers: [HealthController, MeController],
     };

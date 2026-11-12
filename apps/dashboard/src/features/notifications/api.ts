@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api.client';
 import { queryKeys } from '@/lib/query-keys';
+import { useLive } from '@/features/live/live-provider';
 import type { Notification, Page } from '@/lib/types';
 
 type NotificationPage = Page<Notification> & { unreadCount: number };
@@ -10,15 +11,15 @@ type NotificationPage = Page<Notification> & { unreadCount: number };
 const path = (environmentId: string) => `/v1/environments/${environmentId}/notifications` as const;
 
 /**
- * Latest alerts + unread count. Polled every 30 s while the tab is visible
- * (TanStack pauses intervals in background tabs); Phase 3 replaces this
- * with a push over the live-tail WebSocket.
+ * Latest alerts + unread count. Pushed by the live stream (ADR-0016); polled
+ * every 30 s only as a fallback while the stream isn't connected.
  */
 export function useNotifications(environmentId: string) {
+  const live = useLive()?.status === 'live';
   return useQuery({
     queryKey: queryKeys.notifications.list(environmentId),
     queryFn: () => apiFetch<NotificationPage>(`${path(environmentId)}?limit=20`),
-    refetchInterval: 30_000,
+    refetchInterval: live ? false : 30_000,
   });
 }
 
