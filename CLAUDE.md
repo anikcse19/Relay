@@ -32,6 +32,7 @@ pnpm format           # prettier --write (CI runs format:check)
 pnpm db:generate      # after editing packages/db/src/schema.ts — commit the migration
 pnpm db:migrate       # apply migrations to the DATABASE_URL in .env
 pnpm --filter @relay/api dev   # API at http://localhost:3000, docs at /docs
+pnpm --filter @relay/worker dev  # delivery worker (polls the Postgres queue)
 ```
 
 Before declaring work done, run the same checks as CI: `format:check`, `lint`, `build`,
@@ -41,6 +42,8 @@ Before declaring work done, run the same checks as CI: `format:check`, `lint`, `
 
 - `apps/api` — NestJS 12 (ESM) on Fastify. `createApp()` in `src/app.ts` is shared by
   `main.ts` and tests (tests use `fastify.inject`, no network).
+- `apps/worker` — plain Node delivery worker: `Consumer` on `QUEUES.delivery`, signs + sends,
+  records `delivery_attempts`. `startWorker()` in `src/worker.ts` is shared by `main.ts` and tests.
 - `packages/shared` — prefixed ULID ids (`evt_…`), Standard Webhooks signing, retry backoff.
 - `packages/db` — Drizzle schema (single file `src/schema.ts`), migrations in `drizzle/`,
   `@relay/db/testing` → `createTestDb()` (PGlite, migrated).
