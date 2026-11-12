@@ -12,9 +12,7 @@ import { createTestDb } from '@relay/db/testing';
 import { isId, newId } from '@relay/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ensureDefaultOrganization, slugify } from '../src/auth/provisioning.js';
-import { boot } from './helpers.js';
-
-const ORIGIN = 'http://localhost:3001'; // the trusted dashboard origin
+import { boot, cookieHeader, ORIGIN } from './helpers.js';
 
 describe('Authentication & workspace provisioning', () => {
   let app: NestFastifyApplication;
@@ -37,16 +35,6 @@ describe('Authentication & workspace provisioning', () => {
       headers: { origin: ORIGIN },
       payload: { email, name, password },
     });
-  }
-
-  /** `name=value` pairs from Set-Cookie, ready to send back as a Cookie header. */
-  function cookieHeader(res: { headers: Record<string, unknown> }): string {
-    const raw = res.headers['set-cookie'];
-    const list = Array.isArray(raw) ? raw : [raw];
-    return list
-      .filter((c): c is string => typeof c === 'string')
-      .map((c) => c.split(';')[0])
-      .join('; ');
   }
 
   async function workspaceOf(userId: string) {
