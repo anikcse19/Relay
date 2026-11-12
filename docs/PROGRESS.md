@@ -4,17 +4,17 @@ Roadmap for Relay (~2 hours/day, ~12 weeks). Updated at the end of every work se
 
 ## ▶ Next up
 
-**Merge `feat/api-keys` → `main` first** (no migration in Session 3, so no Neon branch to clean up).
+**Merge `feat/delivery-worker` → `main` first** (no migration, so no Neon branch to clean up).
+Also: in `.env`, change `sslmode=require` → `sslmode=verify-full` (see CLAUDE.md).
 
-**Phase 1 · Session 4: Delivery worker**
+**Phase 1 · Sessions 5–6: Dashboard (Next.js)** on branch `feat/dashboard-shell`
 
-- Worker process (`apps/worker` or a `worker` entrypoint) running `Consumer` on `QUEUES.delivery`.
-- Handler: load delivery + endpoint + event; sign with Standard Webhooks (`@relay/shared`);
-  POST with timeout; record a `delivery_attempts` row; update `deliveries` status
-  (`succeeded` / `retrying` with `next_attempt_at` / `failed` when exhausted).
-- Classify errors (timeout, dns, connection_refused, tls, http_error); honour `Retry-After`;
-  4xx vs 5xx retry policy; truncate response bodies.
-- Tests with a local HTTP receiver (no network): success, retry, exhaustion → failed, signature verifies.
+- Read `docs/design/ui-ux-guidelines.md` and ADR-0005 first.
+- `apps/dashboard`: Next.js App Router, design system (tokens, typography, components),
+  app shell (sidebar, org/environment switcher), sign-in / sign-up pages using the
+  Better Auth client against the API (`/auth/*`), and a page that renders `GET /v1/me`.
+- Decide how the dashboard reaches the API in dev (port 3001 → 3000, trusted origin
+  already configured) and note the production same-site proxy plan (ADR-0007).
 
 ## Roadmap
 
@@ -35,7 +35,8 @@ Roadmap for Relay (~2 hours/day, ~12 weeks). Updated at the end of every work se
       provisioned on sign-up, `SessionGuard`, `GET /v1/me`, CSRF tests (ADR-0007)
 - [x] **Session 3:** API keys (`rk_test_`/`rk_live_`, hashed, show-once), `ApiKeyGuard`,
       `POST /v1/events` with transactional fan-out + idempotency, session CSRF guard (ADR-0008)
-- [ ] **Session 4:** Delivery worker: signed HTTP delivery, attempt logging, retries
+- [x] **Session 4:** Delivery worker (`apps/worker`): signed delivery, attempt log, retries with
+      backoff + Retry-After, race-safe CAS, secret-rotation dual signing (ADR-0009)
 - [ ] **Sessions 5–6:** Dashboard (Next.js): design system, app shell, sign-in
 - [ ] **Sessions 7–8:** Dashboard: endpoints, events list, delivery inspector
 
@@ -61,9 +62,10 @@ Roadmap for Relay (~2 hours/day, ~12 weeks). Updated at the end of every work se
 
 ## Session log
 
-| Date       | Session      | Done                                                                                                                                                     |
-| ---------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-11-11 | Phase 0      | Monorepo, RFC + 5 ADRs, UI/UX guidelines, shared/db/queue packages (31 tests), CI. Pushed to GitHub; CI green.                                           |
-| 2026-11-12 | Phase 1 · S1 | Neon connected and migrated. API skeleton (`apps/api`), ADR-0006, CI badge. 45 tests passing. Added CLAUDE.md + tracker.                                 |
-| 2026-11-12 | Phase 1 · S2 | Better Auth on `/auth/*`, identity tables + migration (applied to Neon), workspace provisioning, `/v1/me`, ADR-0007. 61 tests passing.                   |
-| 2026-11-12 | Phase 1 · S3 | Branch `feat/api-keys`. API key management + auth, `POST /v1/events` (one-transaction fan-out, idempotency, atomicity test), ADR-0008. 88 tests passing. |
+| Date       | Session      | Done                                                                                                                                                                                                    |
+| ---------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-11-11 | Phase 0      | Monorepo, RFC + 5 ADRs, UI/UX guidelines, shared/db/queue packages (31 tests), CI. Pushed to GitHub; CI green.                                                                                          |
+| 2026-11-12 | Phase 1 · S1 | Neon connected and migrated. API skeleton (`apps/api`), ADR-0006, CI badge. 45 tests passing. Added CLAUDE.md + tracker.                                                                                |
+| 2026-11-12 | Phase 1 · S2 | Better Auth on `/auth/*`, identity tables + migration (applied to Neon), workspace provisioning, `/v1/me`, ADR-0007. 61 tests passing.                                                                  |
+| 2026-11-12 | Phase 1 · S3 | Branch `feat/api-keys`. API key management + auth, `POST /v1/events` (one-transaction fan-out, idempotency, atomicity test), ADR-0008. 88 tests passing.                                                |
+| 2026-11-12 | Phase 1 · S4 | Branch `feat/delivery-worker`. `apps/worker` with retry policy, error classes, redirect/blocked-port handling, ADR-0009. Live E2E on Neon: delivered + signature verified in ~1.5 s. 136 tests passing. |
