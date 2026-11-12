@@ -1,27 +1,19 @@
-import { notFound, redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { AppShell } from '@/features/shell/app-shell';
-import { getMe } from '@/lib/api.server';
-import { resolveWorkspace } from '@/lib/workspace';
+import { requireWorkspace, type WorkspaceParams } from '@/lib/workspace.server';
 
 export default async function WorkspaceLayout({
   children,
   params,
 }: {
   children: ReactNode;
-  params: Promise<{ org: string; env: string }>;
+  params: WorkspaceParams;
 }) {
-  const me = await getMe();
-  if (!me) redirect('/sign-in');
-
-  const { org, env } = await params;
-  const workspace = resolveWorkspace(me, org, env);
-  // Not a member (or no such workspace): 404, never "forbidden", so other
+  // Not a member (or no such workspace) → 404, never "forbidden", so other
   // tenants' slugs and ids can't be probed (same policy as the API).
-  if (!workspace) notFound();
-
+  const { me, org, env } = await requireWorkspace(params);
   return (
-    <AppShell me={me} workspace={workspace}>
+    <AppShell me={me} workspace={{ org, env }}>
       {children}
     </AppShell>
   );

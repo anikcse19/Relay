@@ -25,3 +25,30 @@ export interface Me {
   activeOrganizationId: string | null;
   organizations: Organization[];
 }
+
+export interface ApiKey {
+  id: string;
+  name: string;
+  /** Non-secret display prefix, e.g. `rk_test_a1B2c3`. */
+  keyPrefix: string;
+  environmentId: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  revokedAt: string | null;
+}
+
+/** Returned once, at creation: the only time the full secret is available. */
+export interface CreatedApiKey extends ApiKey {
+  key: string;
+}
+
+/** RFC 9457 problem details, as returned by every `/v1` error. */
+export interface ProblemDetails {
+  type: string;
+  title: string;
+  status: number;
+  detail?: string;
+  requestId?: string;
+  errors?: { path: string; message: string }[];
+}

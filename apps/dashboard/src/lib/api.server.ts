@@ -12,24 +12,30 @@ export class ApiUnavailableError extends Error {
 }
 
 /**
- * The signed-in user with their organizations and environments, or `null`
- * when there is no valid session. Wrapped in `cache` so a layout and a page
- * rendering in the same request share one API call.
+ * GET from the API as the current user (cookies forwarded).
+ * Returns `null` for 401/404 (no session, or not visible to this user).
  */
-export const getMe = cache(async (): Promise<Me | null> => {
+export async function apiGet<T>(path: `/v1/${string}`): Promise<T | null> {
   const cookie = (await cookies()).toString();
   if (!cookie) return null;
 
   let res: Response;
   try {
-    res = await fetch(`${API_URL}/v1/me`, { headers: { cookie }, cache: 'no-store' });
+    res = await fetch(`${API_URL}${path}`, { headers: { cookie }, cache: 'no-store' });
   } catch {
     throw new ApiUnavailableError('The Relay API is unreachable.');
   }
-  if (res.status === 401) return null;
+  if (res.status === 401 || res.status === 404) return null;
   if (!res.ok) throw new ApiUnavailableError(`The Relay API returned HTTP ${res.status}.`);
-  return (await res.json()) as Me;
-});
+  return (await res.json()) as T;
+}
+
+/**
+ * The signed-in user with their organizations and environments, or `null`
+ * when there is no valid session. Wrapped in `cache` so a layout and a page
+ * rendering in the same request share one API call.
+ */
+export const getMe = cache(() => apiGet<Me>('/v1/me'));
 
 /** Where a signed-in user lands: their first organization, in development mode. */
 export function homePath(me: Me): Route | null {
