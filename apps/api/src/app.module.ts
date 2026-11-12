@@ -1,9 +1,11 @@
 import { type DynamicModule, Module } from '@nestjs/common';
 import type { DatabaseHandle } from '@relay/db';
+import { ApiKeysModule } from './api-keys/api-keys.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { ConfigModule } from './config/config.module.js';
 import type { Env } from './config/env.js';
 import { DatabaseModule } from './database/database.module.js';
+import { EventsModule } from './events/events.module.js';
 import { HealthController } from './health/health.controller.js';
 import { MeController } from './me/me.controller.js';
 
@@ -17,7 +19,13 @@ export class AppModule {
   static forRoot({ env, database }: AppModuleOptions): DynamicModule {
     return {
       module: AppModule,
-      imports: [ConfigModule.forRoot(env), DatabaseModule.forRoot(database), AuthModule],
+      imports: [
+        ConfigModule.forRoot(env),
+        DatabaseModule.forRoot(database),
+        AuthModule,
+        ApiKeysModule,
+        EventsModule,
+      ],
       controllers: [HealthController, MeController],
     };
   }

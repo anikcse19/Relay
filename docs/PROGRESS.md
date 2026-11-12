@@ -4,14 +4,17 @@ Roadmap for Relay (~2 hours/day, ~12 weeks). Updated at the end of every work se
 
 ## ▶ Next up
 
-**Phase 1 · Session 3: API keys + `POST /v1/events`**
+**Merge `feat/api-keys` → `main` first** (no migration in Session 3, so no Neon branch to clean up).
 
-- API keys per environment: `rk_test_…` / `rk_live_…`, show-once, store SHA-256 hash +
-  prefix (table already exists). Session-authenticated endpoints to create/list/revoke keys.
-- `ApiKeyGuard` (Bearer) resolving `organizationId` + `environmentId` for `/v1/*` routes.
-- `POST /v1/events`: validate, idempotency key, insert event + fan-out `deliveries` +
-  enqueue jobs **in one transaction** (transactional outbox, ADR-0003/0004).
-- Tests: key auth (valid/revoked/expired/wrong env), idempotent replay, fan-out.
+**Phase 1 · Session 4: Delivery worker**
+
+- Worker process (`apps/worker` or a `worker` entrypoint) running `Consumer` on `QUEUES.delivery`.
+- Handler: load delivery + endpoint + event; sign with Standard Webhooks (`@relay/shared`);
+  POST with timeout; record a `delivery_attempts` row; update `deliveries` status
+  (`succeeded` / `retrying` with `next_attempt_at` / `failed` when exhausted).
+- Classify errors (timeout, dns, connection_refused, tls, http_error); honour `Retry-After`;
+  4xx vs 5xx retry policy; truncate response bodies.
+- Tests with a local HTTP receiver (no network): success, retry, exhaustion → failed, signature verifies.
 
 ## Roadmap
 
@@ -30,7 +33,8 @@ Roadmap for Relay (~2 hours/day, ~12 weeks). Updated at the end of every work se
       RFC 9457 errors, request IDs, pino logging, OpenAPI + Scalar docs (ADR-0006)
 - [x] **Session 2:** Auth (Better Auth: email/password + GitHub), org + environments
       provisioned on sign-up, `SessionGuard`, `GET /v1/me`, CSRF tests (ADR-0007)
-- [ ] **Session 3:** API keys + `POST /v1/events` with transactional fan-out
+- [x] **Session 3:** API keys (`rk_test_`/`rk_live_`, hashed, show-once), `ApiKeyGuard`,
+      `POST /v1/events` with transactional fan-out + idempotency, session CSRF guard (ADR-0008)
 - [ ] **Session 4:** Delivery worker: signed HTTP delivery, attempt logging, retries
 - [ ] **Sessions 5–6:** Dashboard (Next.js): design system, app shell, sign-in
 - [ ] **Sessions 7–8:** Dashboard: endpoints, events list, delivery inspector
@@ -57,8 +61,9 @@ Roadmap for Relay (~2 hours/day, ~12 weeks). Updated at the end of every work se
 
 ## Session log
 
-| Date       | Session      | Done                                                                                                                                   |
-| ---------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-11-11 | Phase 0      | Monorepo, RFC + 5 ADRs, UI/UX guidelines, shared/db/queue packages (31 tests), CI. Pushed to GitHub; CI green.                         |
-| 2026-11-12 | Phase 1 · S1 | Neon connected and migrated. API skeleton (`apps/api`), ADR-0006, CI badge. 45 tests passing. Added CLAUDE.md + tracker.               |
-| 2026-11-12 | Phase 1 · S2 | Better Auth on `/auth/*`, identity tables + migration (applied to Neon), workspace provisioning, `/v1/me`, ADR-0007. 61 tests passing. |
+| Date       | Session      | Done                                                                                                                                                     |
+| ---------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-11-11 | Phase 0      | Monorepo, RFC + 5 ADRs, UI/UX guidelines, shared/db/queue packages (31 tests), CI. Pushed to GitHub; CI green.                                           |
+| 2026-11-12 | Phase 1 · S1 | Neon connected and migrated. API skeleton (`apps/api`), ADR-0006, CI badge. 45 tests passing. Added CLAUDE.md + tracker.                                 |
+| 2026-11-12 | Phase 1 · S2 | Better Auth on `/auth/*`, identity tables + migration (applied to Neon), workspace provisioning, `/v1/me`, ADR-0007. 61 tests passing.                   |
+| 2026-11-12 | Phase 1 · S3 | Branch `feat/api-keys`. API key management + auth, `POST /v1/events` (one-transaction fan-out, idempotency, atomicity test), ADR-0008. 88 tests passing. |
