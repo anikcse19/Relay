@@ -147,3 +147,18 @@ export interface DeliveryDetail extends EventDelivery {
   requestBody: string;
   attempts: DeliveryAttempt[];
 }
+
+export type NotificationKind = 'endpoint_failing' | 'endpoint_disabled' | 'endpoint_recovered';
+
+/** Endpoint health alert written by the worker (ADR-0015). */
+export interface Notification {
+  id: string;
+  kind: NotificationKind;
+  title: string;
+  body: string;
+  /** `null` if the endpoint has since been deleted. */
+  endpointId: string | null;
+  endpointUrl: string;
+  readAt: string | null;
+  createdAt: string;
+}

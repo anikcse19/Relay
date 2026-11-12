@@ -26,6 +26,8 @@ export const envSchema = z.object({
     .min(1)
     .max(24 * 90)
     .default(120),
+  /** Delete event history (and its deliveries/attempts) older than this. */
+  RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(30),
 });
 
 export type WorkerEnv = z.infer<typeof envSchema>;

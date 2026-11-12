@@ -19,5 +19,6 @@ ADRs are immutable once accepted; a changed decision gets a new ADR that superse
 | [0012](0012-connect-time-ssrf-guard-and-replay.md) | Connect-time SSRF guard and manual replay                | Accepted |
 | [0013](0013-endpoint-health-circuit-breaker.md)    | Endpoint health, circuit breaker and auto-disable        | Accepted |
 | [0014](0014-per-endpoint-rate-limits.md)           | Per-endpoint rate limits with GCRA                       | Accepted |
+| [0015](0015-notifications-and-retention.md)        | In-app health notifications and data retention           | Accepted |
 
 Template: [`template.md`](template.md)

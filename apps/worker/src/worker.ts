@@ -4,6 +4,7 @@ import { type BackoffPolicy, type DeliveryJobPayload, QUEUES, type UrlPolicy } f
 import type { Logger } from 'pino';
 import { createDeliveryHandler } from './delivery-handler.js';
 import type { HealthPolicy } from './health.js';
+import { startMaintenance } from './maintenance.js';
 import { createSender, type Sender } from './http-client.js';
 
 export interface WorkerOptions {
@@ -20,6 +21,8 @@ export interface WorkerOptions {
   send?: Sender;
   /** Circuit breaker / auto-disable thresholds (defaults: 5 failures, 5 days). */
   health?: HealthPolicy;
+  /** Enables the hourly retention job (off when omitted, e.g. in tests). */
+  retentionDays?: number;
 }
 
 /**
@@ -49,6 +52,10 @@ export function startWorker(options: WorkerOptions): { stop: () => Promise<void>
   });
 
   consumer.start();
+  const maintenance =
+    options.retentionDays === undefined
+      ? null
+      : startMaintenance({ db: database.db, logger, retentionDays: options.retentionDays });
   logger.info(
     {
       queue: QUEUES.delivery,
@@ -60,7 +67,7 @@ export function startWorker(options: WorkerOptions): { stop: () => Promise<void>
 
   return {
     stop: async () => {
-      await consumer.stop();
+      await Promise.all([consumer.stop(), maintenance?.stop()]);
       logger.info('Worker stopped');
     },
   };

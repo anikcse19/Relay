@@ -375,6 +375,42 @@ export const deliveryAttempts = pgTable(
   (t) => [index('delivery_attempts_delivery_idx').on(t.deliveryId, t.attemptNumber)],
 );
 
+// ─── Notifications ──────────────────────────────────────────────────────────
+
+export const notificationKind = pgEnum('notification_kind', [
+  'endpoint_failing', // circuit opened: N failures in a row
+  'endpoint_disabled', // auto-disabled after failing for days
+  'endpoint_recovered', // first success after the circuit had opened
+]);
+
+/**
+ * In-app alerts (ADR-0015). Written by the worker in the same transaction
+ * as the endpoint health change that caused them, so an alert exists if and
+ * only if the change happened. Read state is shared by the organization.
+ */
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    environmentId: text('environment_id')
+      .notNull()
+      .references(() => environments.id, { onDelete: 'cascade' }),
+    /** Kept (set null) when the endpoint is deleted: the alert is still history. */
+    endpointId: text('endpoint_id').references(() => endpoints.id, { onDelete: 'set null' }),
+    /** Snapshot, so the alert still says which URL even after edits or deletion. */
+    endpointUrl: text('endpoint_url').notNull(),
+    kind: notificationKind('kind').notNull(),
+    title: text('title').notNull(),
+    body: text('body').notNull(),
+    readAt: timestamp('read_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('notifications_env_id_idx').on(t.environmentId, t.id)],
+);
+
 // ─── Job queue (Postgres transport, see ADR-004) ────────────────────────────
 
 export const jobStatus = pgEnum('job_status', ['pending', 'active', 'dead']);

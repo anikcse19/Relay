@@ -10,6 +10,7 @@ import { EndpointsModule } from './endpoints/endpoints.module.js';
 import { EventsModule } from './events/events.module.js';
 import { HealthController } from './health/health.controller.js';
 import { MeController } from './me/me.controller.js';
+import { NotificationsModule } from './notifications/notifications.module.js';
 import { TenancyModule } from './tenancy/tenancy.module.js';
 
 export interface AppModuleOptions {
@@ -31,6 +32,7 @@ export class AppModule {
         EndpointsModule,
         EventsModule,
         DeliveriesModule,
+        NotificationsModule,
       ],
       controllers: [HealthController, MeController],
     };
