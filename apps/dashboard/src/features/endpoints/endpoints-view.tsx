@@ -152,6 +152,11 @@ export function EndpointsView({
                     <span className={endpoint.filterEventTypes ? 'font-mono' : undefined}>
                       {describeFilter(endpoint.filterEventTypes)}
                     </span>
+                    {endpoint.rateLimitPerSecond !== null && (
+                      <p className="mt-0.5 tabular-nums" title="Rate limit">
+                        ≤ {endpoint.rateLimitPerSecond}/s
+                      </p>
+                    )}
                   </td>
                   <td className="px-4 py-2.5 text-muted-foreground tabular-nums">
                     <RelativeTime value={endpoint.createdAt} />

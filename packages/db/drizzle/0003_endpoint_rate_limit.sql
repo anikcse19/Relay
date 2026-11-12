@@ -1,0 +1,1 @@
+ALTER TABLE "endpoints" ADD COLUMN "rate_limit_tat" timestamp with time zone;

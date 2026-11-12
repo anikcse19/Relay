@@ -58,11 +58,23 @@ const headersField = z
       'Values are write-only: responses list header names only.',
   );
 
+const rateLimitField = z
+  .number()
+  .int()
+  .min(1)
+  .max(1000)
+  .nullable()
+  .describe(
+    "Maximum deliveries per second to this endpoint (bursts of up to one second's worth). " +
+      "`null` = unlimited. Protects receivers that can't absorb traffic spikes.",
+  );
+
 export const createEndpointSchema = z.object({
   url: urlField,
   description: descriptionField.optional(),
   filterEventTypes: filterField.optional(),
   headers: headersField.optional(),
+  rateLimitPerSecond: rateLimitField.optional(),
 });
 
 export const updateEndpointSchema = z
@@ -71,6 +83,7 @@ export const updateEndpointSchema = z
     description: descriptionField,
     filterEventTypes: filterField,
     headers: headersField.describe('Replaces the whole set of custom headers.'),
+    rateLimitPerSecond: rateLimitField,
     status: z
       .enum(['active', 'paused'])
       .describe('Pause to hold deliveries (they are kept, not dropped); resume to send them.'),

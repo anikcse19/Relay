@@ -254,8 +254,13 @@ export const endpoints = pgTable(
     /** Kept valid for a grace period after rotation; both sign each message. */
     previousSigningSecret: text('previous_signing_secret'),
     secretRotatedAt: timestamp('secret_rotated_at', { withTimezone: true }),
-    /** Per-endpoint delivery rate limit; protects slow receivers. */
+    /** Per-endpoint delivery rate limit; protects slow receivers. `null` = unlimited. */
     rateLimitPerSecond: integer('rate_limit_per_second'),
+    /**
+     * GCRA state for the rate limit (ADR-0014): the "theoretical arrival time"
+     * of the next delivery. One timestamp is the whole token bucket.
+     */
+    rateLimitTat: timestamp('rate_limit_tat', { withTimezone: true }),
     /** Extra static headers sent with each delivery. */
     headers: jsonb('headers').$type<Record<string, string>>().notNull().default({}),
     // ── Health (maintained by the worker on every attempt, ADR-0013) ──

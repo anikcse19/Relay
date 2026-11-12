@@ -35,6 +35,7 @@ import {
   recordFailure,
   recordSuccess,
 } from './health.js';
+import { acquireSlot } from './rate-limit.js';
 
 export const USER_AGENT = 'Relay-Webhooks/1.0 (+https://docs.relay.dev/webhooks)';
 /** After a secret rotation, deliveries are signed with both secrets for this long. */
@@ -102,6 +103,7 @@ export async function processDelivery(
       waitMs: sql<number>`greatest(0, ceil(extract(epoch from (${deliveries.nextAttemptAt} - now())) * 1000))::int`,
       endpointId: deliveries.endpointId,
       endpointStatus: endpoints.status,
+      rateLimitPerSecond: endpoints.rateLimitPerSecond,
       circuitWaitMs: sql<
         number | null
       >`case when ${endpoints.circuitOpenUntil} is null then null else greatest(0, ceil(extract(epoch from (${endpoints.circuitOpenUntil} - now())) * 1000))::int end`,
@@ -151,16 +153,27 @@ export async function processDelivery(
           ? 0 // this delivery is the half-open probe
           : probeHoldMs; // another worker's probe is in flight
     if (waitMs > 0) {
-      const delayMs = waitMs + Math.floor(Math.random() * CIRCUIT_SPREAD_MS);
-      await db
-        .update(deliveries)
-        .set({
-          nextAttemptAt: sql`now() + (${delayMs}::double precision * interval '1 millisecond')`,
-        })
-        .where(
-          and(eq(deliveries.id, deliveryId), inArray(deliveries.status, ['pending', 'retrying'])),
-        );
-      throw new DeferError('Endpoint circuit is open; waiting before the next attempt', delayMs);
+      await defer(
+        db,
+        deliveryId,
+        waitMs + Math.floor(Math.random() * CIRCUIT_SPREAD_MS),
+        'Endpoint circuit is open; waiting before the next attempt',
+      );
+    }
+  }
+
+  // Rate limit: claim a send slot last, so a delivery held for any other
+  // reason never uses one up. Manual replays bypass it (a single request).
+  if (trigger === 'scheduled' && row.rateLimitPerSecond !== null) {
+    const waitMs = await acquireSlot(db, row.endpointId, row.rateLimitPerSecond);
+    if (waitMs > 0) {
+      // Spread across a second so a backlog doesn't come back as one herd.
+      await defer(
+        db,
+        deliveryId,
+        waitMs + Math.floor(Math.random() * 1_000),
+        `Endpoint rate limit (${row.rateLimitPerSecond}/s) reached; waiting for a slot`,
+      );
     }
   }
 
@@ -240,6 +253,23 @@ export async function processDelivery(
     );
   }
   return decision.status;
+}
+
+/**
+ * Reschedules without using an attempt, and moves `next_attempt_at` so the
+ * inspector shows when the delivery will actually be tried.
+ */
+async function defer(
+  db: Database,
+  deliveryId: string,
+  delayMs: number,
+  reason: string,
+): Promise<never> {
+  await db
+    .update(deliveries)
+    .set({ nextAttemptAt: sql`now() + (${delayMs}::double precision * interval '1 millisecond')` })
+    .where(and(eq(deliveries.id, deliveryId), inArray(deliveries.status, ['pending', 'retrying'])));
+  throw new DeferError(reason, delayMs);
 }
 
 type Decision = { status: 'succeeded' | 'failed' } | { status: 'retrying'; delayMs: number };

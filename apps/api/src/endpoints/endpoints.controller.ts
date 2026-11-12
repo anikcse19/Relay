@@ -53,6 +53,11 @@ const endpointFields = {
   disabledReason: { type: 'string', nullable: true },
   filterEventTypes: { type: 'array', items: { type: 'string' }, nullable: true },
   headerNames: { type: 'array', items: { type: 'string' } },
+  rateLimitPerSecond: {
+    type: 'integer',
+    nullable: true,
+    description: 'Max deliveries per second; null = unlimited',
+  },
   secretRotatedAt: nullableDate,
   previousSecretExpiresAt: nullableDate,
   health: {

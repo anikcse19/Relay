@@ -13,6 +13,8 @@ export interface EndpointInput {
   url: string;
   description: string | null;
   filterEventTypes: string[] | null;
+  /** `null` = unlimited. */
+  rateLimitPerSecond: number | null;
 }
 
 export function useEndpoints(environmentId: string, initialData: Endpoint[]) {
