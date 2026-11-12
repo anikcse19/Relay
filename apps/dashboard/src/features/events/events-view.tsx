@@ -1,0 +1,315 @@
+'use client';
+
+import { Filter, Loader2, Radio, Send, X } from 'lucide-react';
+import type { Route } from 'next';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useState } from 'react';
+import { CopyableId } from '@/components/copyable-id';
+import { RelativeTime } from '@/components/relative-time';
+import { StatusBadge } from '@/components/status-badge';
+import { ErrorAlert } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
+import type { DeliveryStatus, Environment, EventSummary, Page, Role } from '@/lib/types';
+import { useEvents, useSendTestEvent } from './api';
+import { DeliveryInspector } from './delivery-inspector';
+import { EventPanel } from './event-panel';
+import { normaliseTypeFilter } from './query';
+
+const MANAGE_ROLES: Role[] = ['owner', 'admin'];
+/** Order in which per-status counts are shown in a row. */
+const COUNT_ORDER: DeliveryStatus[] = ['failed', 'retrying', 'pending', 'succeeded', 'cancelled'];
+
+/**
+ * Events list. Everything that defines the view lives in the URL
+ * (guidelines §10): `?type=` filter, `?event=` / `?delivery=` drawer
+ * selection, so it's shareable and survives refresh and Back.
+ */
+export function EventsView({
+  environment,
+  role,
+  endpointsHref,
+  initialPage,
+  initialType,
+}: {
+  environment: Environment;
+  role: Role;
+  endpointsHref: Route;
+  initialPage: Page<EventSummary> | null;
+  initialType?: string;
+}) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const type = normaliseTypeFilter(searchParams.get('type') ?? undefined);
+  const selectedEvent = searchParams.get('event');
+  const selectedDelivery = searchParams.get('delivery');
+
+  const events = useEvents(
+    environment.id,
+    { type },
+    // Server-rendered page only matches the filter it was rendered with.
+    type === initialType ? initialPage : null,
+  );
+  const sendTest = useSendTestEvent(environment.id);
+  const canSend = MANAGE_ROLES.includes(role);
+  const rows = events.data?.pages.flatMap((p) => p.data) ?? [];
+
+  function navigate(updates: Record<string, string | null>, mode: 'push' | 'replace' = 'push') {
+    const params = new URLSearchParams(searchParams.toString());
+    for (const [key, value] of Object.entries(updates)) {
+      if (value === null) params.delete(key);
+      else params.set(key, value);
+    }
+    const query = params.toString();
+    router[mode]((query ? `${pathname}?${query}` : pathname) as Route, { scroll: false });
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Events</h1>
+          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+            Every event sent to {environment.name}, newest first, with how its deliveries are going.
+            Select one to inspect its payload and each delivery attempt.
+          </p>
+        </div>
+        {canSend && (
+          <Button
+            variant="secondary"
+            disabled={sendTest.isPending}
+            onClick={async () => {
+              const { id } = await sendTest.mutateAsync();
+              navigate({ type: null, event: id, delivery: null });
+            }}
+          >
+            {sendTest.isPending ? (
+              <Loader2 className="animate-spin" aria-hidden />
+            ) : (
+              <Send aria-hidden />
+            )}
+            Send test event
+          </Button>
+        )}
+      </div>
+
+      {sendTest.error && (
+        <ErrorAlert>Couldn&apos;t send the test event: {sendTest.error.message}</ErrorAlert>
+      )}
+
+      <TypeFilter
+        value={type}
+        onChange={(next) =>
+          navigate({ type: next ?? null, event: null, delivery: null }, 'replace')
+        }
+      />
+
+      {events.error ? (
+        <ErrorAlert>Couldn&apos;t load events: {events.error.message}</ErrorAlert>
+      ) : events.isPending ? (
+        <p className="text-sm text-muted-foreground" aria-busy>
+          Loading events…
+        </p>
+      ) : rows.length === 0 ? (
+        <EmptyState
+          filtered={type !== undefined}
+          canSend={canSend}
+          onClear={() => navigate({ type: null }, 'replace')}
+        />
+      ) : (
+        <div className="flex flex-col gap-3">
+          <div className="overflow-x-auto rounded-lg border">
+            <table className="w-full text-sm">
+              <thead className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-2 font-medium">Type</th>
+                  <th className="px-4 py-2 font-medium">Deliveries</th>
+                  <th className="px-4 py-2 font-medium">ID</th>
+                  <th className="px-4 py-2 font-medium">Received</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((event) => (
+                  <tr
+                    key={event.id}
+                    onClick={() => navigate({ event: event.id, delivery: null })}
+                    className="cursor-pointer border-b last:border-0 hover:bg-muted/30 aria-selected:bg-muted/50"
+                    aria-selected={event.id === selectedEvent}
+                  >
+                    <td className="px-4 py-2.5">
+                      <button
+                        type="button"
+                        className="font-mono text-xs font-medium hover:underline"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate({ event: event.id, delivery: null });
+                        }}
+                      >
+                        {event.type}
+                      </button>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <DeliveryCounts counts={event.deliveryCounts} />
+                    </td>
+                    <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
+                      <CopyableId value={event.id} />
+                    </td>
+                    <td className="px-4 py-2.5 text-muted-foreground tabular-nums">
+                      <RelativeTime value={event.createdAt} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {events.hasNextPage && (
+            <Button
+              variant="secondary"
+              className="self-center"
+              disabled={events.isFetchingNextPage}
+              onClick={() => events.fetchNextPage()}
+            >
+              {events.isFetchingNextPage && <Loader2 className="animate-spin" aria-hidden />}
+              Load older events
+            </Button>
+          )}
+        </div>
+      )}
+
+      <Sheet
+        open={selectedEvent !== null || selectedDelivery !== null}
+        onOpenChange={(open) => !open && navigate({ event: null, delivery: null })}
+      >
+        <SheetContent aria-describedby={undefined}>
+          {selectedDelivery ? (
+            <DeliveryInspector
+              environmentId={environment.id}
+              deliveryId={selectedDelivery}
+              onBack={selectedEvent ? () => navigate({ delivery: null }) : undefined}
+            />
+          ) : selectedEvent ? (
+            <EventPanel
+              environmentId={environment.id}
+              eventId={selectedEvent}
+              endpointsHref={endpointsHref}
+              onOpenDelivery={(id) => navigate({ delivery: id })}
+            />
+          ) : null}
+        </SheetContent>
+      </Sheet>
+    </div>
+  );
+}
+
+function DeliveryCounts({ counts }: { counts: Record<DeliveryStatus, number> }) {
+  const shown = COUNT_ORDER.filter((s) => counts[s] > 0);
+  if (shown.length === 0) {
+    return <span className="text-xs text-muted-foreground">Not sent to any endpoint</span>;
+  }
+  return (
+    <span className="flex flex-wrap gap-1.5">
+      {shown.map((status) => (
+        <StatusBadge key={status} status={status} detail={String(counts[status])} />
+      ))}
+    </span>
+  );
+}
+
+/** Filter chip (guidelines §4.1): applied filters show as removable chips. */
+function TypeFilter({
+  value,
+  onChange,
+}: {
+  value?: string;
+  onChange: (type: string | undefined) => void;
+}) {
+  const [draft, setDraft] = useState('');
+
+  if (value) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="inline-flex items-center gap-1.5 rounded-full border bg-muted/50 py-0.5 pl-3 pr-1 text-xs">
+          Type: <span className="font-mono">{value}</span>
+          <button
+            type="button"
+            onClick={() => onChange(undefined)}
+            className="rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label={`Remove filter: type ${value}`}
+          >
+            <X className="size-3.5" aria-hidden />
+          </button>
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <form
+      className="flex max-w-sm items-center gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const next = draft.trim();
+        if (next) {
+          onChange(next);
+          setDraft('');
+        }
+      }}
+    >
+      <label htmlFor="type-filter" className="sr-only">
+        Filter by event type
+      </label>
+      <div className="relative flex-1">
+        <Filter
+          className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+          aria-hidden
+        />
+        <Input
+          id="type-filter"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="Filter by type, e.g. invoice.paid"
+          className="h-8 pl-8 font-mono text-xs"
+        />
+      </div>
+      <Button type="submit" variant="secondary" size="sm" disabled={!draft.trim()}>
+        Apply
+      </Button>
+    </form>
+  );
+}
+
+function EmptyState({
+  filtered,
+  canSend,
+  onClear,
+}: {
+  filtered: boolean;
+  canSend: boolean;
+  onClear: () => void;
+}) {
+  if (filtered) {
+    return (
+      <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed px-6 py-10 text-center">
+        <p className="text-sm text-muted-foreground">No events of this type yet.</p>
+        <Button variant="secondary" size="sm" onClick={onClear}>
+          Clear filter
+        </Button>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed px-6 py-12 text-center">
+      <div className="flex size-10 items-center justify-center rounded-full bg-muted">
+        <Radio className="size-5 text-muted-foreground" aria-hidden />
+      </div>
+      <h2 className="font-semibold">No events yet</h2>
+      <p className="max-w-md text-sm text-muted-foreground">
+        Events appear here as soon as your server sends them with{' '}
+        <span className="font-mono">POST /v1/events</span>.
+        {canSend && ' Or send a test event from here to see the whole flow.'}
+      </p>
+    </div>
+  );
+}

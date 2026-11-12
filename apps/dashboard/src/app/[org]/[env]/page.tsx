@@ -1,11 +1,12 @@
 import { CircleCheck, Circle } from 'lucide-react';
-import type { Metadata, Route } from 'next';
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { CopyableId } from '@/components/copyable-id';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { apiGet } from '@/lib/api.server';
-import type { ApiKey } from '@/lib/types';
+import type { ApiKey, Endpoint, EventSummary, Page } from '@/lib/types';
+import { workspacePath } from '@/lib/workspace';
 import { requireWorkspace, type WorkspaceParams } from '@/lib/workspace.server';
 
 export const metadata: Metadata = { title: 'Overview' };
@@ -13,22 +14,39 @@ export const metadata: Metadata = { title: 'Overview' };
 export default async function OverviewPage({ params }: { params: WorkspaceParams }) {
   const { me, org, env } = await requireWorkspace(params);
   const firstName = me.user.name.split(' ')[0];
-  const keys = (await apiGet<ApiKey[]>(`/v1/environments/${env.id}/api-keys`)) ?? [];
+  const base = `/v1/environments/${env.id}` as const;
+  // Four cheap reads in parallel; each list needs only one row to answer "done?".
+  const [keys, endpoints, events, delivered] = await Promise.all([
+    apiGet<ApiKey[]>(`${base}/api-keys`),
+    apiGet<Page<Endpoint>>(`${base}/endpoints?limit=1`),
+    apiGet<Page<EventSummary>>(`${base}/events?limit=1`),
+    apiGet<Page<{ id: string }>>(`${base}/deliveries?status=succeeded&limit=1`),
+  ]);
 
-  // Data-driven where the feature exists; endpoints/events arrive in sessions 7–8.
   const steps = [
     {
       title: 'Create an API key',
       detail: 'Authenticate your server with Relay.',
-      done: keys.length > 0,
-      href: `/${org.slug}/${env.id}/api-keys` as const,
+      done: (keys?.length ?? 0) > 0,
+      href: workspacePath(org, env, '/api-keys'),
     },
-    { title: 'Add an endpoint', detail: 'Tell Relay where to deliver webhooks.', done: false },
-    { title: 'Send a test event', detail: 'POST /v1/events with your key.', done: false },
     {
-      title: 'Inspect the delivery',
-      detail: 'See every attempt, request and response.',
-      done: false,
+      title: 'Add an endpoint',
+      detail: 'Tell Relay where to deliver webhooks.',
+      done: (endpoints?.data.length ?? 0) > 0,
+      href: workspacePath(org, env, '/endpoints'),
+    },
+    {
+      title: 'Send a test event',
+      detail: 'POST /v1/events with your key, or use "Send test event" on the Events page.',
+      done: (events?.data.length ?? 0) > 0,
+      href: workspacePath(org, env, '/events'),
+    },
+    {
+      title: 'Inspect a successful delivery',
+      detail: 'Open an event to see every attempt, request and response.',
+      done: (delivered?.data.length ?? 0) > 0,
+      href: workspacePath(org, env, '/events'),
     },
   ];
   const completed = steps.filter((s) => s.done).length;
@@ -67,8 +85,8 @@ export default async function OverviewPage({ params }: { params: WorkspaceParams
                 <div>
                   <p className={cn('text-sm font-medium', step.done && 'text-muted-foreground')}>
                     {i + 1}.{' '}
-                    {'href' in step && step.href && !step.done ? (
-                      <Link href={step.href as Route} className="text-primary hover:underline">
+                    {!step.done ? (
+                      <Link href={step.href} className="text-primary hover:underline">
                         {step.title}
                       </Link>
                     ) : (

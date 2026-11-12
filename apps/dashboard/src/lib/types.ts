@@ -52,3 +52,85 @@ export interface ProblemDetails {
   requestId?: string;
   errors?: { path: string; message: string }[];
 }
+
+/** A cursor-paginated list: pass `nextCursor` back as `cursor` for the next (older) page. */
+export interface Page<T> {
+  data: T[];
+  nextCursor: string | null;
+}
+
+export type EndpointStatus = 'active' | 'paused' | 'disabled';
+
+export interface Endpoint {
+  id: string;
+  url: string;
+  description: string | null;
+  status: EndpointStatus;
+  disabledReason: string | null;
+  /** `null` = receives every event type. */
+  filterEventTypes: string[] | null;
+  /** Custom header values are write-only; only names come back. */
+  headerNames: string[];
+  secretRotatedAt: string | null;
+  previousSecretExpiresAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Returned on create and rotate: the only times the signing secret is available. */
+export interface EndpointWithSecret extends Endpoint {
+  signingSecret: string;
+}
+
+export type DeliveryStatus = 'pending' | 'retrying' | 'succeeded' | 'failed' | 'cancelled';
+
+export interface EventSummary {
+  id: string;
+  type: string;
+  createdAt: string;
+  deliveryCounts: Record<DeliveryStatus, number>;
+}
+
+export interface EventDelivery {
+  id: string;
+  endpointId: string;
+  endpointUrl: string;
+  status: DeliveryStatus;
+  attemptCount: number;
+  lastStatusCode: number | null;
+  lastAttemptAt: string | null;
+  nextAttemptAt: string | null;
+}
+
+export interface EventDetail {
+  id: string;
+  type: string;
+  data: Record<string, unknown>;
+  idempotencyKey: string | null;
+  createdAt: string;
+  deliveries: EventDelivery[];
+}
+
+export interface DeliveryAttempt {
+  id: string;
+  attemptNumber: number;
+  trigger: 'scheduled' | 'manual';
+  statusCode: number | null;
+  durationMs: number;
+  /** `timeout` | `dns` | `connection_refused` | `connection_reset` | `tls` | `network` | `blocked_port` | `http_error` */
+  errorCode: string | null;
+  errorMessage: string | null;
+  requestHeaders: Record<string, string> | null;
+  responseHeaders: Record<string, string> | null;
+  responseBody: string | null;
+  createdAt: string;
+}
+
+export interface DeliveryDetail extends EventDelivery {
+  eventId: string;
+  eventType: string;
+  createdAt: string;
+  /** The exact JSON body that was signed and sent. */
+  requestBody: string;
+  attempts: DeliveryAttempt[];
+}
