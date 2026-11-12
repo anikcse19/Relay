@@ -1,7 +1,7 @@
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import type { DatabaseHandle } from '@relay/db';
 import { createApp } from '../src/app.js';
-import { parseEnv } from '../src/config/env.js';
+import { type Env, parseEnv } from '../src/config/env.js';
 
 export const testEnv = parseEnv({
   NODE_ENV: 'test',
@@ -16,8 +16,11 @@ export const testEnv = parseEnv({
 /** The trusted dashboard origin. */
 export const ORIGIN = testEnv.DASHBOARD_URL;
 
-export async function boot(database: DatabaseHandle): Promise<NestFastifyApplication> {
-  const app = await createApp({ env: testEnv, database });
+export async function boot(
+  database: DatabaseHandle,
+  overrides: Partial<Env> = {},
+): Promise<NestFastifyApplication> {
+  const app = await createApp({ env: { ...testEnv, ...overrides }, database });
   await app.init();
   await app.getHttpAdapter().getInstance().ready();
   return app;

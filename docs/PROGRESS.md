@@ -4,20 +4,21 @@ Roadmap for Relay (~2 hours/day, ~12 weeks). Updated at the end of every work se
 
 ## ▶ Next up
 
-**Open a PR for `feat/dashboard-shell` (Sessions 5 + 6) and merge it** (no migration → no Neon branch).
-Before merging, click through in a browser: create key (copy, "I've saved this", curl), revoke in
-Development and in Production (type-to-confirm), ⌘K palette, sidebar collapse, light/dark theme.
+**1. Get Session 6 onto `main`.** PR #3 merged before commit `cab7401` (API keys page, palette,
+sidebar) was pushed, so it's only on `feat/dashboard-shell`. `feat/endpoints-events` is branched
+from it, so opening the PR for `feat/endpoints-events` brings both in (or open a small PR for
+`feat/dashboard-shell` first).
 
-**Phase 1 · Sessions 7–8: Endpoints, events and the delivery inspector** (branch `feat/endpoints-events`)
+**2. Phase 1 · Session 8: Dashboard for endpoints, events and deliveries** (same branch
+`feat/endpoints-events`, no migration → no Neon branch). The API from Session 7 is ready.
 
-- API: endpoints CRUD (`/v1/endpoints`, API key **and** session auth), URL validation, signing
-  secret shown once + rotate; list events and deliveries with **cursor pagination** (ids are
-  time-sortable); `GET /v1/deliveries/:id` with its attempts.
-- Basic SSRF guard on endpoint URLs at creation (https only in production, no private IPs);
-  full connect-time guard stays in Phase 2.
-- Dashboard: Endpoints page, Events list (filters in the URL), delivery inspector drawer
-  (attempt timeline, request/response, plain-English error classes).
-- Overview checklist steps 2–4 become data-driven.
+- Endpoints page: list, create dialog (URL field errors from `errors[path=url]`, show-once
+  signing secret like API keys), detail with edit / pause–resume / rotate secret / delete.
+- Events list (`?type=` + cursor in the URL), event detail with its deliveries; "Send test
+  event" button (session `POST …/events`, owner/admin).
+- Delivery inspector drawer: attempt timeline, request body + headers, response, plain-English
+  error classes (`timeout`, `dns`, `connection_refused`, `tls`, `http_error`, `blocked_port`).
+- Overview checklist steps 2–4 data-driven (endpoint exists, event sent, delivery succeeded).
 
 **Local dev ports:** port 3000 is taken by another app on this machine. Run the API with
 `PORT=3100 BETTER_AUTH_URL=http://localhost:3100` (root `.env`) and set
@@ -51,7 +52,10 @@ Development and in Production (type-to-confirm), ⌘K palette, sidebar collapse,
 - [x] **Session 6:** Dashboard: API keys page (show-once secret + curl, optimistic revoke,
       type-to-confirm in production), StatusBadge, RelativeTime, TanStack Query, ⌘K palette,
       collapsible sidebar, data-driven checklist
-- [ ] **Sessions 7–8:** Dashboard: endpoints, events list, delivery inspector
+- [x] **Session 7:** API: endpoints CRUD + secret rotation + pause/resume (re-queues held
+      deliveries), basic SSRF URL policy, `TenantGuard` (API key **or** session on every route),
+      cursor-paginated events/deliveries, delivery detail with attempts (ADR-0011)
+- [ ] **Session 8:** Dashboard: endpoints page, events list, delivery inspector, checklist 2–4
 
 ### Phase 2: Reliability
 
@@ -75,12 +79,13 @@ Development and in Production (type-to-confirm), ⌘K palette, sidebar collapse,
 
 ## Session log
 
-| Date       | Session      | Done                                                                                                                                                                                                       |
-| ---------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-11-11 | Phase 0      | Monorepo, RFC + 5 ADRs, UI/UX guidelines, shared/db/queue packages (31 tests), CI. Pushed to GitHub; CI green.                                                                                             |
-| 2026-11-12 | Phase 1 · S1 | Neon connected and migrated. API skeleton (`apps/api`), ADR-0006, CI badge. 45 tests passing. Added CLAUDE.md + tracker.                                                                                   |
-| 2026-11-12 | Phase 1 · S2 | Better Auth on `/auth/*`, identity tables + migration (applied to Neon), workspace provisioning, `/v1/me`, ADR-0007. 61 tests passing.                                                                     |
-| 2026-11-12 | Phase 1 · S3 | Branch `feat/api-keys`. API key management + auth, `POST /v1/events` (one-transaction fan-out, idempotency, atomicity test), ADR-0008. 88 tests passing.                                                   |
-| 2026-11-12 | Phase 1 · S4 | Branch `feat/delivery-worker`. `apps/worker` with retry policy, error classes, redirect/blocked-port handling, ADR-0009. Live E2E on Neon: delivered + signature verified in ~1.5 s. 136 tests passing.    |
-| 2026-11-12 | Phase 1 · S5 | Branch `feat/dashboard-shell` (not merged yet). Next.js 16 dashboard foundations; caught build-time rewrite baking → runtime `proxy.ts`; ADR-0010. Live E2E via dashboard → API → Neon. 144 tests passing. |
-| 2026-11-12 | Phase 1 · S6 | Branch `feat/dashboard-shell`. API keys page + ⌘K palette + collapsible sidebar; live E2E of key lifecycle through the dashboard proxy. 156 tests passing.                                                 |
+| Date       | Session      | Done                                                                                                                                                                                                            |
+| ---------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-11-11 | Phase 0      | Monorepo, RFC + 5 ADRs, UI/UX guidelines, shared/db/queue packages (31 tests), CI. Pushed to GitHub; CI green.                                                                                                  |
+| 2026-11-12 | Phase 1 · S1 | Neon connected and migrated. API skeleton (`apps/api`), ADR-0006, CI badge. 45 tests passing. Added CLAUDE.md + tracker.                                                                                        |
+| 2026-11-12 | Phase 1 · S2 | Better Auth on `/auth/*`, identity tables + migration (applied to Neon), workspace provisioning, `/v1/me`, ADR-0007. 61 tests passing.                                                                          |
+| 2026-11-12 | Phase 1 · S3 | Branch `feat/api-keys`. API key management + auth, `POST /v1/events` (one-transaction fan-out, idempotency, atomicity test), ADR-0008. 88 tests passing.                                                        |
+| 2026-11-12 | Phase 1 · S4 | Branch `feat/delivery-worker`. `apps/worker` with retry policy, error classes, redirect/blocked-port handling, ADR-0009. Live E2E on Neon: delivered + signature verified in ~1.5 s. 136 tests passing.         |
+| 2026-11-12 | Phase 1 · S5 | Branch `feat/dashboard-shell` (not merged yet). Next.js 16 dashboard foundations; caught build-time rewrite baking → runtime `proxy.ts`; ADR-0010. Live E2E via dashboard → API → Neon. 144 tests passing.      |
+| 2026-11-12 | Phase 1 · S6 | Branch `feat/dashboard-shell`. API keys page + ⌘K palette + collapsible sidebar; live E2E of key lifecycle through the dashboard proxy. 156 tests passing.                                                      |
+| 2026-11-12 | Phase 1 · S7 | Branch `feat/endpoints-events` (from `feat/dashboard-shell`). Endpoints/events/deliveries API with dual auth, URL policy, cursor pagination, ADR-0011. Live E2E on Neon incl. 503→retry→200. 224 tests passing. |

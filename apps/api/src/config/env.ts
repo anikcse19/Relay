@@ -27,6 +27,12 @@ export const envSchema = z
     /** GitHub OAuth app credentials; the provider is enabled only when both are set. */
     GITHUB_CLIENT_ID: z.string().min(1).optional(),
     GITHUB_CLIENT_SECRET: z.string().min(1).optional(),
+    /**
+     * Which endpoint URLs customers may register. `strict` (the production
+     * default): https only, public addresses only. `permissive` (the default
+     * elsewhere): also http and localhost, so local receivers work.
+     */
+    ENDPOINT_URL_POLICY: z.enum(['strict', 'permissive']).optional(),
   })
   .refine((env) => !!env.GITHUB_CLIENT_ID === !!env.GITHUB_CLIENT_SECRET, {
     message: 'GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET must be set together',

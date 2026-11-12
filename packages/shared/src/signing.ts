@@ -15,11 +15,30 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
 const SECRET_PREFIX = 'whsec_';
 export const DEFAULT_TOLERANCE_SECONDS = 5 * 60;
+/**
+ * After an endpoint's secret is rotated, deliveries are signed with both the
+ * new and the previous secret for this long, so receivers can switch over
+ * without dropping a single webhook.
+ */
+export const SECRET_ROTATION_GRACE_HOURS = 24;
 
 export interface SignatureHeaders {
   'webhook-id': string;
   'webhook-timestamp': string;
   'webhook-signature': string;
+}
+
+/**
+ * The JSON body POSTed to endpoints (Standard Webhooks shape). One function,
+ * used by the worker to send and by the API to show it, so the inspector
+ * always displays the exact bytes that were signed.
+ */
+export function webhookBody(event: { type: string; createdAt: Date; data: unknown }): string {
+  return JSON.stringify({
+    type: event.type,
+    timestamp: event.createdAt.toISOString(),
+    data: event.data,
+  });
 }
 
 export function generateSigningSecret(): string {

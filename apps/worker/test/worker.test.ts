@@ -17,7 +17,9 @@ async function waitFor<T>(fn: () => Promise<T | undefined>, timeoutMs = 5_000): 
   }
 }
 
-describe('worker (end to end through the queue)', () => {
+// Boots a migrated PGlite database, a receiver and the worker inside one
+// test; under a parallel `pnpm test` that can exceed Vitest's 5 s default.
+describe('worker (end to end through the queue)', { timeout: 30_000 }, () => {
   it('picks up a queued delivery, delivers it and acks the job', async () => {
     const database = await createTestDb();
     const receiver = await startReceiver();

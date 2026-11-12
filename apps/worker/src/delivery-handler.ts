@@ -17,7 +17,9 @@ import {
   isRetryableStatus,
   newId,
   nextRetryDelay,
+  SECRET_ROTATION_GRACE_HOURS,
   sign,
+  webhookBody,
 } from '@relay/shared';
 import {
   PERMANENT_ERROR_CODES,
@@ -28,7 +30,7 @@ import {
 
 export const USER_AGENT = 'Relay-Webhooks/1.0 (+https://docs.relay.dev/webhooks)';
 /** After a secret rotation, deliveries are signed with both secrets for this long. */
-const ROTATION_GRACE = sql`interval '24 hours'`;
+const ROTATION_GRACE = sql`make_interval(hours => ${SECRET_ROTATION_GRACE_HOURS})`;
 /** Jobs that arrive this close to their scheduled time just run. */
 const EARLY_TOLERANCE_MS = 1_000;
 const FINAL_STATUSES = ['succeeded', 'failed', 'cancelled'] as const;
@@ -121,9 +123,9 @@ export async function processDelivery(
 
   // Byte-identical on every attempt (jsonb normalises key order), so receivers
   // can dedupe on `webhook-id` and compare bodies safely.
-  const body = JSON.stringify({
+  const body = webhookBody({
     type: row.eventType,
-    timestamp: row.eventCreatedAt.toISOString(),
+    createdAt: row.eventCreatedAt,
     data: row.payload,
   });
   const secrets = row.previousSecret ? [row.secret, row.previousSecret] : [row.secret];
