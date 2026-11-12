@@ -62,6 +62,11 @@ Before declaring work done, run the same checks as CI: `format:check`, `lint`, `
 1. **Git:** the developer runs `git add` / `git commit` / `git push` themselves.
    Do NOT commit or push. At the end of each piece of work, provide a ready-to-paste
    conventional commit command (`git add .`, `git commit -m "…" -m "…"`, `git push`).
+   **Branches:** bigger or riskier sessions (especially ones with schema migrations) run on a
+   git feature branch `feat/<topic>`; small work can stay on `main`. When a branch runs
+   `db:migrate`, pair it with a Neon branch of the same name so Neon `main` stays clean.
+   **Neon free plan: max 10 branches including `main` — never exceed it.** Count the existing
+   branches before creating one (ask if ≥ 9), and delete the Neon branch after merging.
 2. **"stop" protocol** — when the developer says **"stop"** (or "stop for today"):
    1. Finish or safely pause the current step; never leave the build/tests broken.
       If something is half-done, note it clearly instead.
