@@ -12,6 +12,12 @@ export const envSchema = z.object({
   WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(500).default(10),
   /** Per-attempt HTTP timeout, covering connect + response body. */
   DELIVERY_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60_000).default(15_000),
+  /**
+   * Which addresses deliveries may connect to (same setting as the API).
+   * `strict` (production default): public addresses only, checked at connect
+   * time. `permissive` (default elsewhere): also localhost/private receivers.
+   */
+  ENDPOINT_URL_POLICY: z.enum(['strict', 'permissive']).optional(),
 });
 
 export type WorkerEnv = z.infer<typeof envSchema>;

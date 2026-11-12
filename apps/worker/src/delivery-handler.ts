@@ -25,6 +25,7 @@ import {
   PERMANENT_ERROR_CODES,
   parseRetryAfter,
   type SendResult,
+  type Sender,
   sendWebhook,
 } from './http-client.js';
 
@@ -39,8 +40,8 @@ export interface DeliveryDeps {
   db: Database;
   timeoutMs: number;
   backoff?: BackoffPolicy;
-  /** Injectable for tests. */
-  send?: typeof sendWebhook;
+  /** How to send; the worker passes a policy-aware sender (`createSender`). */
+  send?: Sender;
 }
 
 export type DeliveryOutcome =
@@ -57,7 +58,7 @@ export type DeliveryOutcome =
  */
 export function createDeliveryHandler(deps: DeliveryDeps) {
   return async (job: Job<DeliveryJobPayload>): Promise<void> => {
-    await processDelivery(deps, job.payload.deliveryId);
+    await processDelivery(deps, job.payload.deliveryId, job.payload.trigger ?? 'scheduled');
   };
 }
 
@@ -75,6 +76,7 @@ export function createDeliveryHandler(deps: DeliveryDeps) {
 export async function processDelivery(
   deps: DeliveryDeps,
   deliveryId: string,
+  trigger: 'scheduled' | 'manual' = 'scheduled',
 ): Promise<DeliveryOutcome> {
   const { db } = deps;
   const policy = deps.backoff ?? DEFAULT_BACKOFF;
@@ -141,7 +143,11 @@ export async function processDelivery(
   };
 
   const result = await send({ url: row.url, headers, body, timeoutMs: deps.timeoutMs });
-  const decision = decide(result, row.attemptCount + 1, policy);
+  const automatic = decide(result, row.attemptCount + 1, policy);
+  // A manual replay is a single attempt: if it fails, the delivery goes back
+  // to `failed` rather than starting a new retry schedule.
+  const decision: Decision =
+    trigger === 'manual' && automatic.status === 'retrying' ? { status: 'failed' } : automatic;
 
   const recorded = await db.transaction(async (tx) => {
     const [updated] = await tx
@@ -165,6 +171,7 @@ export async function processDelivery(
       organizationId: row.organizationId,
       deliveryId,
       attemptNumber: row.attemptCount + 1,
+      trigger,
       statusCode: result.statusCode,
       durationMs: result.durationMs,
       errorCode: result.errorCode,

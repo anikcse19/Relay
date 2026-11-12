@@ -1,7 +1,7 @@
 'use client';
 
-import { ArrowLeft, Info } from 'lucide-react';
-import { useState } from 'react';
+import { ArrowLeft, Info, Loader2, RotateCcw } from 'lucide-react';
+import { type ReactNode, useState } from 'react';
 import { CodeBlock, HeaderList } from '@/components/code-block';
 import { CopyableId } from '@/components/copyable-id';
 import { RelativeTime } from '@/components/relative-time';
@@ -13,7 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { DeliveryAttempt, DeliveryDetail } from '@/lib/types';
 import { cn } from '@/lib/utils';
-import { useDelivery } from './api';
+import { useDelivery, useReplayDelivery } from './api';
 import {
   attemptLabel,
   attemptSucceeded,
@@ -32,10 +32,13 @@ import {
 export function DeliveryInspector({
   environmentId,
   deliveryId,
+  canReplay,
   onBack,
 }: {
   environmentId: string;
   deliveryId: string;
+  /** Owners and admins can replay. */
+  canReplay: boolean;
   /** Shown when opened from an event: back to that event. */
   onBack?: () => void;
 }) {
@@ -56,13 +59,18 @@ export function DeliveryInspector({
           <ErrorAlert>Couldn&apos;t load this delivery: {error.message}</ErrorAlert>
         </>
       ) : (
-        <InspectorBody delivery={delivery} />
+        <InspectorBody
+          delivery={delivery}
+          replay={
+            canReplay ? <ReplayButton environmentId={environmentId} delivery={delivery} /> : null
+          }
+        />
       )}
     </div>
   );
 }
 
-function InspectorBody({ delivery }: { delivery: DeliveryDetail }) {
+function InspectorBody({ delivery, replay }: { delivery: DeliveryDetail; replay: ReactNode }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const attempts = delivery.attempts;
   const selected = attempts.find((a) => a.id === selectedId) ?? attempts.at(-1);
@@ -96,6 +104,7 @@ function InspectorBody({ delivery }: { delivery: DeliveryDetail }) {
             Next attempt <RelativeTime value={delivery.nextAttemptAt} />
           </span>
         )}
+        {replay && <div className="ml-auto">{replay}</div>}
       </div>
 
       {attempts.length === 0 ? (
@@ -144,6 +153,44 @@ function InspectorBody({ delivery }: { delivery: DeliveryDetail }) {
         </>
       )}
     </>
+  );
+}
+
+/**
+ * Replay (guidelines §4.3): one manual attempt with the same `webhook-id`.
+ * Only for finished deliveries; the API explains any refusal (e.g. paused endpoint).
+ */
+function ReplayButton({
+  environmentId,
+  delivery,
+}: {
+  environmentId: string;
+  delivery: DeliveryDetail;
+}) {
+  const replay = useReplayDelivery(environmentId);
+  const scheduled = delivery.status === 'pending' || delivery.status === 'retrying';
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <Button
+        variant="secondary"
+        size="sm"
+        disabled={scheduled || replay.isPending}
+        title={scheduled ? 'Already scheduled: replay is for finished deliveries' : undefined}
+        onClick={() => replay.mutate(delivery.id)}
+      >
+        {replay.isPending ? (
+          <Loader2 className="animate-spin" aria-hidden />
+        ) : (
+          <RotateCcw aria-hidden />
+        )}
+        Replay
+      </Button>
+      {replay.error && (
+        <p role="alert" className="max-w-56 text-right text-xs text-danger">
+          {replay.error.message}
+        </p>
+      )}
+    </div>
   );
 }
 

@@ -1,7 +1,20 @@
-import { Controller, Get, Inject, Param, Query, UseGuards } from '@nestjs/common';
 import {
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Inject,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiAcceptedResponse,
   ApiBearerAuth,
+  ApiConflictResponse,
   ApiCookieAuth,
+  ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -13,6 +26,7 @@ import { pageSchema, paginationQueryDocs } from '../common/pagination.js';
 import {
   CurrentTenant,
   ENVIRONMENT_SCOPED,
+  RequireRoles,
   type Tenant,
   TenantGuard,
 } from '../tenancy/tenant.guard.js';
@@ -97,5 +111,23 @@ export class DeliveriesController {
   @ApiNotFoundResponse({ description: 'Delivery not found' })
   get(@CurrentTenant() tenant: Tenant, @Param('deliveryId') id: string) {
     return this.deliveries.get(tenant, id);
+  }
+
+  @Post(':deliveryId/replay')
+  @RequireRoles('owner', 'admin')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({
+    summary: 'Replay a delivery',
+    description:
+      'Sends a finished delivery (failed, succeeded or cancelled) again: one new attempt, ' +
+      'recorded with `trigger: "manual"`, and no automatic retries if it fails. The receiver ' +
+      'gets the same `webhook-id`, so idempotent receivers handle it safely.',
+  })
+  @ApiAcceptedResponse({ schema: detailSchema })
+  @ApiForbiddenResponse({ description: 'Dashboard users need the owner or admin role' })
+  @ApiConflictResponse({ description: 'Already scheduled, or the endpoint is paused/disabled' })
+  @ApiNotFoundResponse({ description: 'Delivery not found' })
+  replay(@CurrentTenant() tenant: Tenant, @Param('deliveryId') id: string) {
+    return this.deliveries.replay(tenant, id);
   }
 }
