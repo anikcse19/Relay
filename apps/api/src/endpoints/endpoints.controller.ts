@@ -55,6 +55,19 @@ const endpointFields = {
   headerNames: { type: 'array', items: { type: 'string' } },
   secretRotatedAt: nullableDate,
   previousSecretExpiresAt: nullableDate,
+  health: {
+    type: 'object',
+    description: 'Maintained on every delivery attempt',
+    properties: {
+      consecutiveFailures: { type: 'integer' },
+      failingSince: nullableDate,
+      circuitOpenUntil: {
+        ...nullableDate,
+        description: 'While set, scheduled deliveries wait instead of being sent',
+      },
+      lastSuccessAt: nullableDate,
+    },
+  },
   createdAt: { type: 'string', format: 'date-time' },
   updatedAt: { type: 'string', format: 'date-time' },
 } satisfies Record<string, SchemaObject>;
@@ -124,8 +137,9 @@ export class EndpointsController {
   @ApiOperation({
     summary: 'Update an endpoint',
     description:
-      'Pausing holds new and pending deliveries; resuming sends them. `headers` replaces ' +
-      'the whole set.',
+      'Pausing holds new and pending deliveries; resuming sends them. Setting `status` to ' +
+      '`active` on a paused or disabled endpoint also resets its health (failure streak and ' +
+      'circuit breaker). `headers` replaces the whole set.',
   })
   @ApiBody({ schema: openApiSchema(updateEndpointSchema) })
   @ApiOkResponse({ schema: endpointSchema })

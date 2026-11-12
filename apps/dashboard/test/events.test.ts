@@ -14,6 +14,7 @@ import {
   prettyJson,
 } from '@/features/events/explain';
 import { eventsQueryString, normaliseTypeFilter } from '@/features/events/query';
+import { failuresInARow, healthSummary } from '@/features/endpoints/health';
 
 const attempt = (statusCode: number | null, errorCode: string | null = null) => ({
   statusCode,
@@ -123,5 +124,51 @@ describe('events query', () => {
     expect(normaliseTypeFilter(['a.b', 'c'])).toBe('a.b');
     expect(normaliseTypeFilter('drop table;')).toBeUndefined();
     expect(normaliseTypeFilter(undefined)).toBeUndefined();
+  });
+});
+
+describe('endpoint health summary', () => {
+  const health = {
+    consecutiveFailures: 0,
+    failingSince: null,
+    circuitOpenUntil: null,
+    lastSuccessAt: null,
+  };
+
+  it('puts the most urgent state first', () => {
+    expect(
+      healthSummary({
+        status: 'active',
+        health: {
+          ...health,
+          consecutiveFailures: 7,
+          failingSince: '2026-11-12T00:00:00Z',
+          circuitOpenUntil: '2026-11-12T01:00:00Z',
+        },
+      }),
+    ).toEqual({ kind: 'circuit_open', failures: 7, until: '2026-11-12T01:00:00Z' });
+    expect(
+      healthSummary({
+        status: 'active',
+        health: { ...health, consecutiveFailures: 2, failingSince: '2026-11-12T00:00:00Z' },
+      }),
+    ).toMatchObject({ kind: 'failing', failures: 2 });
+    expect(
+      healthSummary({
+        status: 'active',
+        health: { ...health, lastSuccessAt: '2026-11-12T00:00:00Z' },
+      }),
+    ).toMatchObject({ kind: 'healthy' });
+    expect(healthSummary({ status: 'active', health })).toEqual({ kind: 'no_deliveries' });
+  });
+
+  it('says nothing for paused or disabled endpoints (their status/reason says it)', () => {
+    expect(healthSummary({ status: 'disabled', health })).toBeNull();
+    expect(healthSummary({ status: 'paused', health })).toBeNull();
+  });
+
+  it('pluralises failure counts', () => {
+    expect(failuresInARow(1)).toBe('1 failure');
+    expect(failuresInARow(5)).toBe('5 failures in a row');
   });
 });

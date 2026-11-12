@@ -18,6 +18,14 @@ export const envSchema = z.object({
    * time. `permissive` (default elsewhere): also localhost/private receivers.
    */
   ENDPOINT_URL_POLICY: z.enum(['strict', 'permissive']).optional(),
+  /** Failures in a row before an endpoint's circuit opens (deliveries wait instead of sending). */
+  CIRCUIT_FAILURE_THRESHOLD: z.coerce.number().int().min(1).max(1000).default(5),
+  /** Disable an endpoint that has failed continuously for this long. */
+  AUTO_DISABLE_AFTER_HOURS: z.coerce
+    .number()
+    .min(1)
+    .max(24 * 90)
+    .default(120),
 });
 
 export type WorkerEnv = z.infer<typeof envSchema>;

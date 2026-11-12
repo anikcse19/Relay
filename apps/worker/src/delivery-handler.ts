@@ -9,7 +9,7 @@ import {
   inArray,
   sql,
 } from '@relay/db';
-import { type Job, RetryLaterError } from '@relay/queue';
+import { DeferError, type Job, RetryLaterError } from '@relay/queue';
 import {
   type BackoffPolicy,
   DEFAULT_BACKOFF,
@@ -28,6 +28,13 @@ import {
   type Sender,
   sendWebhook,
 } from './http-client.js';
+import {
+  claimProbe,
+  DEFAULT_HEALTH,
+  type HealthPolicy,
+  recordFailure,
+  recordSuccess,
+} from './health.js';
 
 export const USER_AGENT = 'Relay-Webhooks/1.0 (+https://docs.relay.dev/webhooks)';
 /** After a secret rotation, deliveries are signed with both secrets for this long. */
@@ -35,6 +42,8 @@ const ROTATION_GRACE = sql`make_interval(hours => ${SECRET_ROTATION_GRACE_HOURS}
 /** Jobs that arrive this close to their scheduled time just run. */
 const EARLY_TOLERANCE_MS = 1_000;
 const FINAL_STATUSES = ['succeeded', 'failed', 'cancelled'] as const;
+/** Spreads deliveries held by an open circuit so they don't all return at once. */
+const CIRCUIT_SPREAD_MS = 5_000;
 
 export interface DeliveryDeps {
   db: Database;
@@ -42,12 +51,14 @@ export interface DeliveryDeps {
   backoff?: BackoffPolicy;
   /** How to send; the worker passes a policy-aware sender (`createSender`). */
   send?: Sender;
+  /** Circuit breaker and auto-disable thresholds. */
+  health?: HealthPolicy;
 }
 
 export type DeliveryOutcome =
   | 'succeeded'
   | 'failed' // dead-lettered: non-retryable response or retries exhausted
-  | 'cancelled' // endpoint disabled
+  | 'cancelled' // endpoint disabled (or auto-disabled by this attempt)
   | 'held' // endpoint paused: stays pending until the endpoint is resumed
   | 'skipped' // already final, or deleted: a duplicate/stale job
   | 'superseded'; // another worker recorded this attempt first
@@ -81,6 +92,7 @@ export async function processDelivery(
   const { db } = deps;
   const policy = deps.backoff ?? DEFAULT_BACKOFF;
   const send = deps.send ?? sendWebhook;
+  const health = deps.health ?? DEFAULT_HEALTH;
 
   const [row] = await db
     .select({
@@ -88,7 +100,11 @@ export async function processDelivery(
       status: deliveries.status,
       attemptCount: deliveries.attemptCount,
       waitMs: sql<number>`greatest(0, ceil(extract(epoch from (${deliveries.nextAttemptAt} - now())) * 1000))::int`,
+      endpointId: deliveries.endpointId,
       endpointStatus: endpoints.status,
+      circuitWaitMs: sql<
+        number | null
+      >`case when ${endpoints.circuitOpenUntil} is null then null else greatest(0, ceil(extract(epoch from (${endpoints.circuitOpenUntil} - now())) * 1000))::int end`,
       url: endpoints.url,
       customHeaders: endpoints.headers,
       secret: endpoints.signingSecret,
@@ -109,7 +125,7 @@ export async function processDelivery(
   if (!row || (FINAL_STATUSES as readonly string[]).includes(row.status)) return 'skipped';
 
   if (row.waitMs > EARLY_TOLERANCE_MS) {
-    throw new RetryLaterError('Delivery is not due yet', row.waitMs);
+    throw new DeferError('Delivery is not due yet', row.waitMs);
   }
 
   if (row.endpointStatus === 'disabled') {
@@ -122,6 +138,31 @@ export async function processDelivery(
     return 'cancelled';
   }
   if (row.endpointStatus === 'paused') return 'held';
+
+  // Circuit breaker: while the endpoint is cooling down, scheduled deliveries
+  // wait (without using up attempts). A manual replay is the user explicitly
+  // asking to try now, so it goes through.
+  if (trigger === 'scheduled' && row.circuitWaitMs !== null) {
+    const probeHoldMs = deps.timeoutMs + 5_000;
+    const waitMs =
+      row.circuitWaitMs > 0
+        ? row.circuitWaitMs
+        : (await claimProbe(db, row.endpointId, probeHoldMs))
+          ? 0 // this delivery is the half-open probe
+          : probeHoldMs; // another worker's probe is in flight
+    if (waitMs > 0) {
+      const delayMs = waitMs + Math.floor(Math.random() * CIRCUIT_SPREAD_MS);
+      await db
+        .update(deliveries)
+        .set({
+          nextAttemptAt: sql`now() + (${delayMs}::double precision * interval '1 millisecond')`,
+        })
+        .where(
+          and(eq(deliveries.id, deliveryId), inArray(deliveries.status, ['pending', 'retrying'])),
+        );
+      throw new DeferError('Endpoint circuit is open; waiting before the next attempt', delayMs);
+    }
+  }
 
   // Byte-identical on every attempt (jsonb normalises key order), so receivers
   // can dedupe on `webhook-id` and compare bodies safely.
@@ -164,7 +205,7 @@ export async function processDelivery(
       })
       .where(and(eq(deliveries.id, deliveryId), eq(deliveries.attemptCount, row.attemptCount)))
       .returning({ id: deliveries.id });
-    if (!updated) return false;
+    if (!updated) return null;
 
     await tx.insert(deliveryAttempts).values({
       id: newId('attempt'),
@@ -180,10 +221,18 @@ export async function processDelivery(
       responseHeaders: result.responseHeaders,
       responseBody: result.responseBody,
     });
-    return true;
+
+    if (decision.status === 'succeeded') {
+      await recordSuccess(tx, row.endpointId);
+      return { autoDisabled: false };
+    }
+    const { disabled } = await recordFailure(tx, row.endpointId, health);
+    return { autoDisabled: disabled };
   });
 
   if (!recorded) return 'superseded';
+  // This failure disabled the endpoint; its queued deliveries (this one included) were cancelled.
+  if (recorded.autoDisabled && decision.status === 'retrying') return 'cancelled';
   if (decision.status === 'retrying') {
     throw new RetryLaterError(
       `Attempt ${row.attemptCount + 1} failed: ${result.errorMessage}`,

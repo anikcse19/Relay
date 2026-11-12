@@ -51,8 +51,15 @@ export interface QueueTransport {
   dequeue<T>(queue: string, options: DequeueOptions): Promise<Job<T>[]>;
   /** Marks the job done. Returns `false` if the lease was lost. */
   ack(job: Job): Promise<boolean>;
-  /** Reschedules the job, or dead-letters it if attempts are exhausted. */
-  retry(job: Job, options: { delayMs: number; error?: string }): Promise<RetryOutcome>;
+  /**
+   * Reschedules the job, or dead-letters it if attempts are exhausted.
+   * `refundAttempt`: the run didn't fail (it was deferred), so give back the
+   * attempt that dequeuing consumed; a deferred job is never dead-lettered.
+   */
+  retry(
+    job: Job,
+    options: { delayMs: number; error?: string; refundAttempt?: boolean },
+  ): Promise<RetryOutcome>;
   /** Dead-letters the job immediately (non-retryable failure). */
   fail(job: Job, error?: string): Promise<boolean>;
   /** Returns expired leases to the queue. Returns how many jobs were reclaimed. */

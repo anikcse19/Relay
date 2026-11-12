@@ -13,6 +13,16 @@ export class RetryLaterError extends Error {
   }
 }
 
+/**
+ * Throw when the job isn't ready yet (a scheduled time hasn't arrived, a
+ * downstream circuit is open): it's rescheduled **without using up an
+ * attempt**. Attempts count failures; waiting isn't one, and a long wait
+ * must never dead-letter a job.
+ */
+export class DeferError extends RetryLaterError {
+  override name = 'DeferError';
+}
+
 /** Throw from a handler when retrying cannot help; the job is dead-lettered immediately. */
 export class PermanentFailureError extends Error {
   override name = 'PermanentFailureError';
@@ -178,7 +188,11 @@ export class Consumer<T = unknown> {
         ? error.delayMs
         : (nextRetryDelay(job.attempts, this.opts.backoff) ?? 0);
 
-    const outcome = await this.transport.retry(job, { delayMs, error: message });
+    const outcome = await this.transport.retry(job, {
+      delayMs,
+      error: message,
+      refundAttempt: error instanceof DeferError,
+    });
     if (outcome === 'scheduled') this.emit({ type: 'retry_scheduled', job, delayMs, error });
     else if (outcome === 'dead') this.emit({ type: 'dead_lettered', job, error });
     else this.emit({ type: 'lease_lost', job });

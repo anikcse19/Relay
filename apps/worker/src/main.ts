@@ -2,6 +2,7 @@ import { createDb } from '@relay/db';
 import { defaultUrlPolicy } from '@relay/shared';
 import { pino } from 'pino';
 import { ConfigError, loadDotEnv, parseEnv } from './env.js';
+import { DEFAULT_HEALTH } from './health.js';
 import { startWorker } from './worker.js';
 
 function bootstrap() {
@@ -36,6 +37,11 @@ function bootstrap() {
     concurrency: env.WORKER_CONCURRENCY,
     timeoutMs: env.DELIVERY_TIMEOUT_MS,
     urlPolicy: defaultUrlPolicy(env.NODE_ENV, env.ENDPOINT_URL_POLICY),
+    health: {
+      ...DEFAULT_HEALTH,
+      circuitThreshold: env.CIRCUIT_FAILURE_THRESHOLD,
+      autoDisableAfterMs: env.AUTO_DISABLE_AFTER_HOURS * 3_600_000,
+    },
   });
 
   let stopping = false;
