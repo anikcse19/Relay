@@ -187,6 +187,7 @@ export function EventsView({
             <DeliveryInspector
               environmentId={environment.id}
               deliveryId={selectedDelivery}
+              canReplay={canSend}
               onBack={selectedEvent ? () => navigate({ delivery: null }) : undefined}
             />
           ) : selectedEvent ? (

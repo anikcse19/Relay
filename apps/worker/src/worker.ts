@@ -1,8 +1,9 @@
 import type { DatabaseHandle } from '@relay/db';
 import { Consumer, type ConsumerEvent, PostgresQueue } from '@relay/queue';
-import { type BackoffPolicy, type DeliveryJobPayload, QUEUES } from '@relay/shared';
+import { type BackoffPolicy, type DeliveryJobPayload, QUEUES, type UrlPolicy } from '@relay/shared';
 import type { Logger } from 'pino';
 import { createDeliveryHandler } from './delivery-handler.js';
+import { createSender, type Sender } from './http-client.js';
 
 export interface WorkerOptions {
   database: DatabaseHandle;
@@ -12,6 +13,10 @@ export interface WorkerOptions {
   backoff?: BackoffPolicy;
   /** Lower bound for idle polling (tests use a small value). */
   minPollMs?: number;
+  /** Address policy for outgoing deliveries (default `permissive`). */
+  urlPolicy?: UrlPolicy;
+  /** Overrides the sender entirely (tests). */
+  send?: Sender;
 }
 
 /**
@@ -30,6 +35,7 @@ export function startWorker(options: WorkerOptions): { stop: () => Promise<void>
     handler: createDeliveryHandler({
       db: database.db,
       timeoutMs: options.timeoutMs,
+      send: options.send ?? createSender({ policy: options.urlPolicy ?? 'permissive' }),
       ...(options.backoff && { backoff: options.backoff }),
     }),
     concurrency: options.concurrency,
@@ -39,7 +45,14 @@ export function startWorker(options: WorkerOptions): { stop: () => Promise<void>
   });
 
   consumer.start();
-  logger.info({ queue: QUEUES.delivery, concurrency: options.concurrency }, 'Worker started');
+  logger.info(
+    {
+      queue: QUEUES.delivery,
+      concurrency: options.concurrency,
+      urlPolicy: options.send ? 'custom' : (options.urlPolicy ?? 'permissive'),
+    },
+    'Worker started',
+  );
 
   return {
     stop: async () => {

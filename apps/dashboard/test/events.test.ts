@@ -35,6 +35,7 @@ describe('explainAttempt', () => {
     expect(explainAttempt(attempt(301))!.retried).toBe(true);
     expect(explainAttempt(attempt(503))!.retried).toBe(true);
     expect(explainAttempt(attempt(null, 'blocked_port'))!.retried).toBe(false);
+    expect(explainAttempt(attempt(null, 'blocked_address'))!.retried).toBe(false);
     expect(explainAttempt(attempt(null, 'timeout'))!.retried).toBe(true);
   });
 
@@ -52,6 +53,7 @@ describe('attempt formatting', () => {
     expect(attemptLabel(attempt(503))).toBe('503');
     expect(attemptLabel(attempt(null, 'connection_refused'))).toBe('Refused');
     expect(attemptLabel(attempt(null, null))).toBe('Error');
+    expect(attemptLabel(attempt(null, 'blocked_address'))).toBe('Blocked address');
   });
 
   it('formats gaps between attempts so backoff is visible', () => {
@@ -72,6 +74,7 @@ describe('attempt formatting', () => {
     expect(deliverySummary('succeeded', 3)).toBe('Delivered after 3 attempts');
     expect(deliverySummary('failed', 8)).toBe('Failed after 8 attempts; no more retries');
     expect(deliverySummary('pending', 0)).toBe('Queued; not attempted yet');
+    expect(deliverySummary('pending', 2)).toBe('2 attempts so far; next attempt queued');
   });
 
   it('pretty-prints JSON and leaves other text alone', () => {

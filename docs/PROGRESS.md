@@ -4,27 +4,21 @@ Roadmap for Relay (~2 hours/day, ~12 weeks). Updated at the end of every work se
 
 ## ▶ Next up
 
-**1. Open a PR for `feat/endpoints-events` (Sessions 7 + 8) and merge it** (no migration → no
-Neon branch). Session 6 already reached `main` via PR #4. `main` CI is currently red: the worker
-e2e test times out at Vitest's 5 s default on CI; the fix (`{ timeout: 30_000 }`) is in this
-branch, so merging turns `main` green. Before merging, click through in a browser: add/edit/
-pause/resume/rotate/delete an endpoint (production: type-to-confirm), Events → "Send test
-event" → drawer → delivery inspector (timeline, Response/Request tabs, the explanation for a
-failing receiver), `?type=` filter chip, "Load older events", Back button closing the drawer.
+**1. Open a PR for `feat/reliability` (Session 9) and merge it** (no migration → no Neon branch).
+Before merging, in the browser: Events → open a failed delivery → **Replay** (owner/admin), and
+check the button is disabled while a delivery is pending/retrying.
 
-**2. Phase 2 · Session 9: Connect-time SSRF guard + manual replay** (branch `feat/reliability`;
-no migration expected: `delivery_attempts.trigger` already has `manual`).
+**2. Phase 2 · Session 10: Endpoint health, circuit breaker and auto-disable** (branch
+`feat/endpoint-health`). **Needs a migration → pair with a Neon branch of the same name**
+(count Neon branches first: max 10 including `main`, ask if ≥ 9; delete it after merge).
 
-- Worker: resolve the hostname, refuse non-public addresses **at connect time** (pinned
-  lookup on the undici dispatcher), new error class `blocked_address` (permanent). Reuse
-  `isPublicAddress` by moving it from the API to `@relay/shared`. Closes the DNS-rebinding gap
-  noted in ADR-0011.
-- API: `POST …/deliveries/:id/replay` (owner/admin): resets a final delivery to pending, enqueues
-  it, the next attempt is recorded with `trigger: 'manual'`.
-- Dashboard: "Replay" button in the delivery inspector (guidelines §4.3), optimistic status.
-
-Later Phase 2 sessions (circuit breaker, auto-disable, per-endpoint rate limits) likely need
-endpoint health columns → migration → pair with a Neon branch (count branches first, max 10).
+- Schema: endpoint health columns (e.g. `consecutive_failures`, `failing_since`,
+  `circuit_open_until`) on `endpoints`.
+- Worker: update health per attempt; while the circuit is open, reschedule instead of sending
+  (protects a struggling receiver and our worker pool); auto-disable after failing for N days
+  with `disabled_reason`, cancelling its pending deliveries.
+- API + dashboard: health on the Endpoints page (status + "failing since"), re-enable flow.
+- ADR-0013.
 
 **Local dev ports:** port 3000 is taken by another app on this machine. Run the API with
 `PORT=3100 BETTER_AUTH_URL=http://localhost:3100` (root `.env`) and set
@@ -66,9 +60,13 @@ endpoint health columns → migration → pair with a Neon branch (count branche
       send test event), drawer with event detail + delivery inspector (timeline with deltas,
       request/response tabs, plain-English failures), checklist 2–4 data-driven
 
-### Phase 2: Reliability
+### Phase 2: Reliability (in progress)
 
-- [ ] Circuit breaker, per-endpoint rate limits, SSRF guard, manual replay, auto-disable
+- [x] **Session 9:** Connect-time SSRF guard (undici agent lookup, `blocked_address`, shared
+      blocklist/policy), manual replay (API + worker `trigger: 'manual'` + inspector button),
+      Vitest timeouts for integration suites, fixed a 1-in-60 jitter flake (ADR-0012)
+- [ ] **Session 10:** Endpoint health, circuit breaker, auto-disable (migration)
+- [ ] Per-endpoint rate limits
 
 ### Phase 3: Real-time & UX
 
@@ -88,14 +86,15 @@ endpoint health columns → migration → pair with a Neon branch (count branche
 
 ## Session log
 
-| Date       | Session      | Done                                                                                                                                                                                                            |
-| ---------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-11-11 | Phase 0      | Monorepo, RFC + 5 ADRs, UI/UX guidelines, shared/db/queue packages (31 tests), CI. Pushed to GitHub; CI green.                                                                                                  |
-| 2026-11-12 | Phase 1 · S1 | Neon connected and migrated. API skeleton (`apps/api`), ADR-0006, CI badge. 45 tests passing. Added CLAUDE.md + tracker.                                                                                        |
-| 2026-11-12 | Phase 1 · S2 | Better Auth on `/auth/*`, identity tables + migration (applied to Neon), workspace provisioning, `/v1/me`, ADR-0007. 61 tests passing.                                                                          |
-| 2026-11-12 | Phase 1 · S3 | Branch `feat/api-keys`. API key management + auth, `POST /v1/events` (one-transaction fan-out, idempotency, atomicity test), ADR-0008. 88 tests passing.                                                        |
-| 2026-11-12 | Phase 1 · S4 | Branch `feat/delivery-worker`. `apps/worker` with retry policy, error classes, redirect/blocked-port handling, ADR-0009. Live E2E on Neon: delivered + signature verified in ~1.5 s. 136 tests passing.         |
-| 2026-11-12 | Phase 1 · S5 | Branch `feat/dashboard-shell` (not merged yet). Next.js 16 dashboard foundations; caught build-time rewrite baking → runtime `proxy.ts`; ADR-0010. Live E2E via dashboard → API → Neon. 144 tests passing.      |
-| 2026-11-12 | Phase 1 · S6 | Branch `feat/dashboard-shell`. API keys page + ⌘K palette + collapsible sidebar; live E2E of key lifecycle through the dashboard proxy. 156 tests passing.                                                      |
-| 2026-11-12 | Phase 1 · S7 | Branch `feat/endpoints-events` (from `feat/dashboard-shell`). Endpoints/events/deliveries API with dual auth, URL policy, cursor pagination, ADR-0011. Live E2E on Neon incl. 503→retry→200. 224 tests passing. |
-| 2026-11-12 | Phase 1 · S8 | Branch `feat/endpoints-events`. Endpoints page, Events list + drawer + delivery inspector, test events, checklist 4/4 verified live through the dashboard. Phase 1 complete. 238 tests passing.                 |
+| Date       | Session      | Done                                                                                                                                                                                                              |
+| ---------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-11-11 | Phase 0      | Monorepo, RFC + 5 ADRs, UI/UX guidelines, shared/db/queue packages (31 tests), CI. Pushed to GitHub; CI green.                                                                                                    |
+| 2026-11-12 | Phase 1 · S1 | Neon connected and migrated. API skeleton (`apps/api`), ADR-0006, CI badge. 45 tests passing. Added CLAUDE.md + tracker.                                                                                          |
+| 2026-11-12 | Phase 1 · S2 | Better Auth on `/auth/*`, identity tables + migration (applied to Neon), workspace provisioning, `/v1/me`, ADR-0007. 61 tests passing.                                                                            |
+| 2026-11-12 | Phase 1 · S3 | Branch `feat/api-keys`. API key management + auth, `POST /v1/events` (one-transaction fan-out, idempotency, atomicity test), ADR-0008. 88 tests passing.                                                          |
+| 2026-11-12 | Phase 1 · S4 | Branch `feat/delivery-worker`. `apps/worker` with retry policy, error classes, redirect/blocked-port handling, ADR-0009. Live E2E on Neon: delivered + signature verified in ~1.5 s. 136 tests passing.           |
+| 2026-11-12 | Phase 1 · S5 | Branch `feat/dashboard-shell` (not merged yet). Next.js 16 dashboard foundations; caught build-time rewrite baking → runtime `proxy.ts`; ADR-0010. Live E2E via dashboard → API → Neon. 144 tests passing.        |
+| 2026-11-12 | Phase 1 · S6 | Branch `feat/dashboard-shell`. API keys page + ⌘K palette + collapsible sidebar; live E2E of key lifecycle through the dashboard proxy. 156 tests passing.                                                        |
+| 2026-11-12 | Phase 1 · S7 | Branch `feat/endpoints-events` (from `feat/dashboard-shell`). Endpoints/events/deliveries API with dual auth, URL policy, cursor pagination, ADR-0011. Live E2E on Neon incl. 503→retry→200. 224 tests passing.   |
+| 2026-11-12 | Phase 1 · S8 | Branch `feat/endpoints-events`. Endpoints page, Events list + drawer + delivery inspector, test events, checklist 4/4 verified live through the dashboard. Phase 1 complete. 238 tests passing.                   |
+| 2026-11-12 | Phase 2 · S9 | Branch `feat/reliability`. Connect-time SSRF guard + replay, ADR-0012. Live replay through the dev stack (400 → fix → replay → 200, 409 on double replay). Fixed CI timeouts + a jitter flake. 259 tests passing. |

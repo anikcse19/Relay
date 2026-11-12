@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import {
   and,
   asc,
@@ -10,8 +10,10 @@ import {
   eq,
   events,
   lt,
+  queueJobs,
+  sql,
 } from '@relay/db';
-import { webhookBody } from '@relay/shared';
+import { type DeliveryJobPayload, QUEUES, webhookBody } from '@relay/shared';
 import { z } from 'zod';
 import { paginationSchema, toPage } from '../common/pagination.js';
 import { DB } from '../database/database.module.js';
@@ -114,5 +116,47 @@ export class DeliveriesService {
       requestBody: webhookBody({ type: row.eventType, createdAt: eventCreatedAt, data: payload }),
       attempts,
     };
+  }
+
+  /**
+   * Manually re-sends a finished delivery (failed, succeeded or cancelled):
+   * exactly one new attempt, recorded as `manual`, with no automatic
+   * retries. The row is locked so two concurrent replays can't both queue.
+   */
+  async replay(tenant: Tenant, id: string) {
+    await this.db.transaction(async (tx) => {
+      const [row] = await tx
+        .select({ status: deliveries.status, endpointStatus: endpoints.status })
+        .from(deliveries)
+        .innerJoin(endpoints, eq(endpoints.id, deliveries.endpointId))
+        .where(and(eq(deliveries.id, id), eq(deliveries.environmentId, tenant.environmentId)))
+        .for('update', { of: deliveries })
+        .limit(1);
+      if (!row) throw new NotFoundException('Delivery not found.');
+      if (row.status === 'pending' || row.status === 'retrying') {
+        throw new ConflictException(
+          'This delivery is already scheduled; replay is for deliveries that have finished.',
+        );
+      }
+      if (row.endpointStatus !== 'active') {
+        throw new ConflictException(
+          `The endpoint is ${row.endpointStatus}. Resume it first, then replay.`,
+        );
+      }
+
+      await tx
+        .update(deliveries)
+        .set({ status: 'pending', nextAttemptAt: sql`now()` })
+        .where(eq(deliveries.id, id));
+      await tx
+        .insert(queueJobs)
+        .values({
+          queue: QUEUES.delivery,
+          payload: { deliveryId: id, trigger: 'manual' } satisfies DeliveryJobPayload,
+          dedupeKey: id,
+        })
+        .onConflictDoNothing();
+    });
+    return this.get(tenant, id);
   }
 }

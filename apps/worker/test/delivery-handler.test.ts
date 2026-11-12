@@ -112,6 +112,12 @@ describe('processDelivery', () => {
     const s = await seedDelivery(db, receiver.url);
     receiver.respondWith((_req, res) => res.writeHead(500).end());
     await processDelivery(deps, s.deliveryId).catch(() => {}); // attempt 1 → retrying
+    // Backoff uses full jitter (0…baseMs), so ~1 run in 60 would draw a delay
+    // inside the 1 s "close enough, just run it" tolerance. Pin it instead.
+    await db
+      .update(deliveries)
+      .set({ nextAttemptAt: sql`now() + interval '10 minutes'` })
+      .where(eq(deliveries.id, s.deliveryId));
 
     const early = await processDelivery(deps, s.deliveryId).catch((e: unknown) => e);
     expect(early).toBeInstanceOf(RetryLaterError);
@@ -166,6 +172,43 @@ describe('processDelivery', () => {
     const s = await seedDelivery(db, 'http://127.0.0.1:6000/'); // X11 port: on the bad-port list
     expect(await processDelivery(deps, s.deliveryId)).toBe('failed');
     expect((await attemptsOf(s.deliveryId))[0]).toMatchObject({ errorCode: 'blocked_port' });
+  });
+
+  describe('manual replay', () => {
+    it('records the attempt as manual and never schedules automatic retries', async () => {
+      const s = await seedDelivery(db, receiver.url);
+      // A delivery that already failed for good, now replayed while the receiver is still down.
+      await db
+        .update(deliveries)
+        .set({ status: 'pending', attemptCount: 3, nextAttemptAt: sql`now()` })
+        .where(eq(deliveries.id, s.deliveryId));
+      receiver.respondWith((_req, res) => res.writeHead(503).end('still down'));
+
+      expect(await processDelivery(deps, s.deliveryId, 'manual')).toBe('failed');
+      const row = await deliveryRow(s.deliveryId);
+      expect(row).toMatchObject({ status: 'failed', attemptCount: 4, nextAttemptAt: null });
+      expect((await attemptsOf(s.deliveryId))[0]).toMatchObject({
+        attemptNumber: 4,
+        trigger: 'manual',
+        statusCode: 503,
+      });
+    });
+
+    it('a failed replay of an early attempt also stops (one attempt, not a new schedule)', async () => {
+      const s = await seedDelivery(db, receiver.url);
+      receiver.respondWith((_req, res) => res.writeHead(500).end());
+      expect(await processDelivery(deps, s.deliveryId, 'manual')).toBe('failed');
+    });
+
+    it('succeeds like any other attempt', async () => {
+      const s = await seedDelivery(db, receiver.url);
+      expect(await processDelivery(deps, s.deliveryId, 'manual')).toBe('succeeded');
+      expect((await attemptsOf(s.deliveryId))[0]!.trigger).toBe('manual');
+      // Scheduled attempts keep the default trigger.
+      const t = await seedDelivery(db, receiver.url);
+      await processDelivery(deps, t.deliveryId);
+      expect((await attemptsOf(t.deliveryId))[0]!.trigger).toBe('scheduled');
+    });
   });
 
   it('holds deliveries for paused endpoints and cancels them for disabled ones', async () => {

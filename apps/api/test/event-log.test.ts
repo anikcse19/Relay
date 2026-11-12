@@ -1,5 +1,5 @@
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { type Database, deliveries, deliveryAttempts, eq } from '@relay/db';
+import { type Database, deliveries, deliveryAttempts, endpoints, eq, queueJobs } from '@relay/db';
 import { createTestDb } from '@relay/db/testing';
 import { newId, webhookBody } from '@relay/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -209,6 +209,76 @@ describe('event log: listing events and inspecting deliveries', () => {
       expect(
         (await asUser(outsider, `${env(outsider)}/deliveries/${delivery.id}`)).statusCode,
       ).toBe(404);
+    });
+
+    describe('replay', () => {
+      const replay = (id: string, headers: Record<string, string>) =>
+        app.inject({ method: 'POST', url: id, headers });
+      const asOwner = { cookie: '', origin: ORIGIN };
+
+      async function finishedDelivery(status: 'failed' | 'succeeded' = 'failed') {
+        const [d] = (await asKey(`/v1/deliveries?eventId=${sent[0]!.id}&limit=1`)).json().data;
+        await db
+          .update(deliveries)
+          .set({ status, nextAttemptAt: null })
+          .where(eq(deliveries.id, d.id));
+        await db.delete(queueJobs).where(eq(queueJobs.dedupeKey, d.id));
+        return d as { id: string; endpointId: string };
+      }
+
+      it('re-queues a finished delivery as one manual attempt', async () => {
+        const d = await finishedDelivery('failed');
+        asOwner.cookie = owner.cookie;
+        const res = await replay(`${env(owner)}/deliveries/${d.id}/replay`, asOwner);
+        expect(res.statusCode).toBe(202);
+        expect(res.json()).toMatchObject({ id: d.id, status: 'pending' });
+
+        const jobs = await db.select().from(queueJobs).where(eq(queueJobs.dedupeKey, d.id));
+        expect(jobs).toHaveLength(1);
+        expect(jobs[0]!.payload).toEqual({ deliveryId: d.id, trigger: 'manual' });
+
+        // Now scheduled: a second replay is refused instead of double-sending.
+        const again = await replay(`${env(owner)}/deliveries/${d.id}/replay`, asOwner);
+        expect(again.statusCode).toBe(409);
+      });
+
+      it('works with an API key too, including for succeeded deliveries', async () => {
+        const d = await finishedDelivery('succeeded');
+        const res = await replay(`/v1/deliveries/${d.id}/replay`, {
+          authorization: `Bearer ${devKey}`,
+        });
+        expect(res.statusCode).toBe(202);
+      });
+
+      it('refuses while the endpoint is paused', async () => {
+        const d = await finishedDelivery('failed');
+        await db.update(endpoints).set({ status: 'paused' }).where(eq(endpoints.id, d.endpointId));
+        try {
+          const res = await replay(`/v1/deliveries/${d.id}/replay`, {
+            authorization: `Bearer ${devKey}`,
+          });
+          expect(res.statusCode).toBe(409);
+          expect(res.json().detail).toMatch(/paused/);
+        } finally {
+          await db
+            .update(endpoints)
+            .set({ status: 'active' })
+            .where(eq(endpoints.id, d.endpointId));
+        }
+      });
+
+      it('is scoped like every other route', async () => {
+        const d = await finishedDelivery('failed');
+        const cross = await replay(`/v1/deliveries/${d.id}/replay`, {
+          authorization: `Bearer ${prodKey}`,
+        });
+        expect(cross.statusCode).toBe(404);
+        const csrf = await replay(`${env(owner)}/deliveries/${d.id}/replay`, {
+          cookie: owner.cookie,
+          origin: 'https://evil.example',
+        });
+        expect(csrf.statusCode).toBe(403);
+      });
     });
   });
 });

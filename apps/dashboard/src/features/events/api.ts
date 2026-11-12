@@ -77,3 +77,21 @@ export function useSendTestEvent(environmentId: string) {
       queryClient.invalidateQueries({ queryKey: queryKeys.events.all(environmentId) }),
   });
 }
+
+/**
+ * Replays a finished delivery (one manual attempt). The inspector switches
+ * to the returned "pending" state at once, then polls until the attempt lands.
+ */
+export function useReplayDelivery(environmentId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<DeliveryDetail>(`${envPath(environmentId)}/deliveries/${id}/replay`, {
+        method: 'POST',
+      }),
+    onSuccess: (delivery) => {
+      queryClient.setQueryData(queryKeys.deliveries.detail(environmentId, delivery.id), delivery);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.events.all(environmentId) });
+    },
+  });
+}

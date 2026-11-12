@@ -27,6 +27,7 @@ const ERROR_LABELS: Record<string, string> = {
   tls: 'TLS error',
   network: 'Network error',
   blocked_port: 'Blocked port',
+  blocked_address: 'Blocked address',
 };
 
 /**
@@ -141,6 +142,15 @@ export function explainAttempt(
           'standard web port. This is not retried.',
         retried: false,
       };
+    case 'blocked_address':
+      return {
+        title: 'Relay refused to connect to a private address',
+        detail:
+          "The endpoint's hostname resolved to a private, loopback or internal address when Relay " +
+          'connected. Webhooks only go to the public internet, so this is not retried. Point the ' +
+          'hostname at a public server, then replay.',
+        retried: false,
+      };
     default:
       return {
         title: 'A network error occurred',
@@ -162,6 +172,8 @@ export function deliverySummary(status: DeliveryStatus, attempts: number): strin
       return `${tries} so far; retrying`;
     case 'cancelled':
       return 'Cancelled: the endpoint was disabled';
+    case 'pending':
+      return attempts === 0 ? 'Queued; not attempted yet' : `${tries} so far; next attempt queued`;
     default:
       return attempts === 0 ? 'Queued; not attempted yet' : tries;
   }
