@@ -3,6 +3,8 @@ import {
   CircleCheck,
   CircleX,
   Clock,
+  CirclePause,
+  CircleSlash,
   type LucideIcon,
   RotateCw,
   TimerOff,
@@ -13,7 +15,7 @@ type Tone = 'success' | 'info' | 'warning' | 'danger' | 'muted';
 
 /**
  * The one status vocabulary used everywhere (guidelines §2.2): always color
- * + icon + text, never color alone. Delivery and API-key states share it.
+ * + icon + text, never color alone. Delivery, endpoint and API-key states share it.
  */
 const STATUSES = {
   succeeded: { tone: 'success', icon: CircleCheck, label: 'Succeeded' },
@@ -24,6 +26,8 @@ const STATUSES = {
   active: { tone: 'success', icon: CircleCheck, label: 'Active' },
   revoked: { tone: 'muted', icon: Ban, label: 'Revoked' },
   expired: { tone: 'muted', icon: TimerOff, label: 'Expired' },
+  paused: { tone: 'warning', icon: CirclePause, label: 'Paused' },
+  disabled: { tone: 'danger', icon: CircleSlash, label: 'Disabled' },
 } satisfies Record<string, { tone: Tone; icon: LucideIcon; label: string }>;
 
 export type Status = keyof typeof STATUSES;

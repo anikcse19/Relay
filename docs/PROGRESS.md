@@ -4,21 +4,27 @@ Roadmap for Relay (~2 hours/day, ~12 weeks). Updated at the end of every work se
 
 ## ▶ Next up
 
-**1. Get Session 6 onto `main`.** PR #3 merged before commit `cab7401` (API keys page, palette,
-sidebar) was pushed, so it's only on `feat/dashboard-shell`. `feat/endpoints-events` is branched
-from it, so opening the PR for `feat/endpoints-events` brings both in (or open a small PR for
-`feat/dashboard-shell` first).
+**1. Open a PR for `feat/endpoints-events` (Sessions 7 + 8) and merge it** (no migration → no
+Neon branch). Session 6 already reached `main` via PR #4. `main` CI is currently red: the worker
+e2e test times out at Vitest's 5 s default on CI; the fix (`{ timeout: 30_000 }`) is in this
+branch, so merging turns `main` green. Before merging, click through in a browser: add/edit/
+pause/resume/rotate/delete an endpoint (production: type-to-confirm), Events → "Send test
+event" → drawer → delivery inspector (timeline, Response/Request tabs, the explanation for a
+failing receiver), `?type=` filter chip, "Load older events", Back button closing the drawer.
 
-**2. Phase 1 · Session 8: Dashboard for endpoints, events and deliveries** (same branch
-`feat/endpoints-events`, no migration → no Neon branch). The API from Session 7 is ready.
+**2. Phase 2 · Session 9: Connect-time SSRF guard + manual replay** (branch `feat/reliability`;
+no migration expected: `delivery_attempts.trigger` already has `manual`).
 
-- Endpoints page: list, create dialog (URL field errors from `errors[path=url]`, show-once
-  signing secret like API keys), detail with edit / pause–resume / rotate secret / delete.
-- Events list (`?type=` + cursor in the URL), event detail with its deliveries; "Send test
-  event" button (session `POST …/events`, owner/admin).
-- Delivery inspector drawer: attempt timeline, request body + headers, response, plain-English
-  error classes (`timeout`, `dns`, `connection_refused`, `tls`, `http_error`, `blocked_port`).
-- Overview checklist steps 2–4 data-driven (endpoint exists, event sent, delivery succeeded).
+- Worker: resolve the hostname, refuse non-public addresses **at connect time** (pinned
+  lookup on the undici dispatcher), new error class `blocked_address` (permanent). Reuse
+  `isPublicAddress` by moving it from the API to `@relay/shared`. Closes the DNS-rebinding gap
+  noted in ADR-0011.
+- API: `POST …/deliveries/:id/replay` (owner/admin): resets a final delivery to pending, enqueues
+  it, the next attempt is recorded with `trigger: 'manual'`.
+- Dashboard: "Replay" button in the delivery inspector (guidelines §4.3), optimistic status.
+
+Later Phase 2 sessions (circuit breaker, auto-disable, per-endpoint rate limits) likely need
+endpoint health columns → migration → pair with a Neon branch (count branches first, max 10).
 
 **Local dev ports:** port 3000 is taken by another app on this machine. Run the API with
 `PORT=3100 BETTER_AUTH_URL=http://localhost:3100` (root `.env`) and set
@@ -36,7 +42,7 @@ from it, so opening the PR for `feat/endpoints-events` brings both in (or open a
 - [x] `@relay/queue`: Postgres SKIP LOCKED transport + Consumer
 - [x] GitHub Actions CI (green), Neon database migrated
 
-### Phase 1: Core MVP (in progress)
+### Phase 1: Core MVP ✅
 
 - [x] **Session 1:** API skeleton: NestJS + Fastify, config validation, health probes,
       RFC 9457 errors, request IDs, pino logging, OpenAPI + Scalar docs (ADR-0006)
@@ -55,7 +61,10 @@ from it, so opening the PR for `feat/endpoints-events` brings both in (or open a
 - [x] **Session 7:** API: endpoints CRUD + secret rotation + pause/resume (re-queues held
       deliveries), basic SSRF URL policy, `TenantGuard` (API key **or** session on every route),
       cursor-paginated events/deliveries, delivery detail with attempts (ADR-0011)
-- [ ] **Session 8:** Dashboard: endpoints page, events list, delivery inspector, checklist 2–4
+- [x] **Session 8:** Dashboard: Endpoints page (create/edit, show-once secret + verify snippet,
+      pause/resume, rotate, delete with type-to-confirm), Events list (URL filters, load more,
+      send test event), drawer with event detail + delivery inspector (timeline with deltas,
+      request/response tabs, plain-English failures), checklist 2–4 data-driven
 
 ### Phase 2: Reliability
 
@@ -89,3 +98,4 @@ from it, so opening the PR for `feat/endpoints-events` brings both in (or open a
 | 2026-11-12 | Phase 1 · S5 | Branch `feat/dashboard-shell` (not merged yet). Next.js 16 dashboard foundations; caught build-time rewrite baking → runtime `proxy.ts`; ADR-0010. Live E2E via dashboard → API → Neon. 144 tests passing.      |
 | 2026-11-12 | Phase 1 · S6 | Branch `feat/dashboard-shell`. API keys page + ⌘K palette + collapsible sidebar; live E2E of key lifecycle through the dashboard proxy. 156 tests passing.                                                      |
 | 2026-11-12 | Phase 1 · S7 | Branch `feat/endpoints-events` (from `feat/dashboard-shell`). Endpoints/events/deliveries API with dual auth, URL policy, cursor pagination, ADR-0011. Live E2E on Neon incl. 503→retry→200. 224 tests passing. |
+| 2026-11-12 | Phase 1 · S8 | Branch `feat/endpoints-events`. Endpoints page, Events list + drawer + delivery inspector, test events, checklist 4/4 verified live through the dashboard. Phase 1 complete. 238 tests passing.                 |

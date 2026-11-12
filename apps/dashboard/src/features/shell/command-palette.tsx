@@ -9,8 +9,10 @@ import {
   LogOut,
   Monitor,
   Moon,
+  Radio,
   Search,
   Sun,
+  Webhook,
 } from 'lucide-react';
 import type { Route } from 'next';
 import { usePathname, useRouter } from 'next/navigation';
@@ -101,6 +103,20 @@ export function CommandPalette({
           <Group heading="Go to">
             <Item icon={<LayoutDashboard />} onSelect={() => go(workspacePath(org, env))}>
               Overview
+            </Item>
+            <Item
+              icon={<Radio />}
+              keywords={['log', 'deliveries', 'webhooks']}
+              onSelect={() => go(workspacePath(org, env, '/events'))}
+            >
+              Events
+            </Item>
+            <Item
+              icon={<Webhook />}
+              keywords={['urls', 'receivers', 'destinations']}
+              onSelect={() => go(workspacePath(org, env, '/endpoints'))}
+            >
+              Endpoints
             </Item>
             <Item
               icon={<KeyRound />}

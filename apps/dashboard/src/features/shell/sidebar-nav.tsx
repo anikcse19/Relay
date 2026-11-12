@@ -25,8 +25,8 @@ interface NavItem {
 
 const ITEMS: NavItem[] = [
   { label: 'Overview', path: '', icon: LayoutDashboard },
-  { label: 'Events', path: null, icon: Radio },
-  { label: 'Endpoints', path: null, icon: Webhook },
+  { label: 'Events', path: '/events', icon: Radio },
+  { label: 'Endpoints', path: '/endpoints', icon: Webhook },
   { label: 'Event types', path: null, icon: Tags },
   { label: 'API keys', path: '/api-keys', icon: KeyRound },
 ];
