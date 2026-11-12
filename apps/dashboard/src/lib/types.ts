@@ -71,6 +71,8 @@ export interface Endpoint {
   filterEventTypes: string[] | null;
   /** Custom header values are write-only; only names come back. */
   headerNames: string[];
+  /** Max deliveries per second; `null` = unlimited. */
+  rateLimitPerSecond: number | null;
   secretRotatedAt: string | null;
   previousSecretExpiresAt: string | null;
   health: EndpointHealth;

@@ -274,6 +274,26 @@ describe('endpoints', () => {
       });
     });
 
+    it('sets, changes and removes a rate limit', async () => {
+      const ep = await createEndpoint({ url: 'https://example.com/rl', rateLimitPerSecond: 10 });
+      expect(ep.rateLimitPerSecond).toBe(10);
+      const changed = await asUser(owner, 'PATCH', `${base(owner)}/${ep.id}`, {
+        rateLimitPerSecond: 2,
+      });
+      expect(changed.json().rateLimitPerSecond).toBe(2);
+      const removed = await asUser(owner, 'PATCH', `${base(owner)}/${ep.id}`, {
+        rateLimitPerSecond: null,
+      });
+      expect(removed.json().rateLimitPerSecond).toBeNull();
+
+      for (const bad of [0, 1001, 2.5, '10']) {
+        const res = await asUser(owner, 'PATCH', `${base(owner)}/${ep.id}`, {
+          rateLimitPerSecond: bad,
+        });
+        expect(res.statusCode).toBe(422);
+      }
+    });
+
     it('rejects an empty update', async () => {
       const ep = await createEndpoint();
       expect((await asUser(owner, 'PATCH', `${base(owner)}/${ep.id}`, {})).statusCode).toBe(422);

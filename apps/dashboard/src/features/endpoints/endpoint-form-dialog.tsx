@@ -34,6 +34,13 @@ const formSchema = z.object({
     const bad = invalidEventType(value);
     if (bad) ctx.addIssue({ code: 'custom', message: `“${bad}” isn't a valid event type` });
   }),
+  /** Text input; empty = unlimited. Same bounds as the API (1–1000). */
+  rateLimit: z
+    .string()
+    .trim()
+    .refine((v) => v === '' || (/^\d+$/.test(v) && Number(v) >= 1 && Number(v) <= 1000), {
+      message: 'Enter a whole number from 1 to 1000, or leave empty for no limit',
+    }),
 });
 type FormValues = z.infer<typeof formSchema>;
 
@@ -67,6 +74,7 @@ export function EndpointFormDialog({
       url: endpoint?.url ?? '',
       description: endpoint?.description ?? '',
       eventTypes: endpoint?.filterEventTypes?.join(', ') ?? '',
+      rateLimit: endpoint?.rateLimitPerSecond?.toString() ?? '',
     },
   });
   const { errors, isSubmitting } = form.formState;
@@ -86,6 +94,7 @@ export function EndpointFormDialog({
       url: values.url,
       description: values.description || null,
       filterEventTypes: parseEventTypes(values.eventTypes),
+      rateLimitPerSecond: values.rateLimit ? Number(values.rateLimit) : null,
     };
     try {
       if (endpoint) {
@@ -100,6 +109,7 @@ export function EndpointFormDialog({
         for (const e of error.problem.errors) {
           if (e.path === 'url') form.setError('url', { message: e.message });
           if (e.path === 'description') form.setError('description', { message: e.message });
+          if (e.path === 'rateLimitPerSecond') form.setError('rateLimit', { message: e.message });
           if (e.path.startsWith('filterEventTypes')) {
             form.setError('eventTypes', { message: e.message });
           }
@@ -210,6 +220,29 @@ export function EndpointFormDialog({
                 'endpoint-types',
                 errors.eventTypes?.message,
                 'Separate with commas. Leave empty to receive every event type.',
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="endpoint-rate">
+                Rate limit <span className="font-normal text-muted-foreground">(optional)</span>
+              </Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="endpoint-rate"
+                  inputMode="numeric"
+                  placeholder="No limit"
+                  className="w-32 tabular-nums"
+                  aria-invalid={errors.rateLimit ? true : undefined}
+                  aria-describedby={errors.rateLimit ? 'endpoint-rate-error' : 'endpoint-rate-hint'}
+                  {...form.register('rateLimit')}
+                />
+                <span className="text-sm text-muted-foreground">deliveries per second</span>
+              </div>
+              {fieldError(
+                'endpoint-rate',
+                errors.rateLimit?.message,
+                "For receivers that can't absorb spikes. Extra deliveries wait their turn; none are dropped.",
               )}
             </div>
 

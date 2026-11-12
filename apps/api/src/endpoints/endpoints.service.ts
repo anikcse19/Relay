@@ -32,6 +32,8 @@ export interface PublicEndpoint {
   disabledReason: string | null;
   filterEventTypes: string[] | null;
   headerNames: string[];
+  /** `null` = unlimited. */
+  rateLimitPerSecond: number | null;
   secretRotatedAt: Date | null;
   /** Until then, deliveries are also signed with the previous secret. */
   previousSecretExpiresAt: Date | null;
@@ -61,6 +63,7 @@ export function toPublicEndpoint(row: EndpointRow, now = Date.now()): PublicEndp
     disabledReason: row.disabledReason,
     filterEventTypes: row.filterEventTypes,
     headerNames: Object.keys(row.headers).sort(),
+    rateLimitPerSecond: row.rateLimitPerSecond,
     secretRotatedAt: row.secretRotatedAt,
     previousSecretExpiresAt: graceEnds && graceEnds.getTime() > now ? graceEnds : null,
     health: {
@@ -127,6 +130,7 @@ export class EndpointsService {
         description: input.description ?? null,
         filterEventTypes: input.filterEventTypes ?? null,
         headers: input.headers ?? {},
+        rateLimitPerSecond: input.rateLimitPerSecond ?? null,
         signingSecret,
       })
       .returning();
@@ -152,6 +156,11 @@ export class EndpointsService {
           ...(input.description !== undefined && { description: input.description }),
           ...(input.filterEventTypes !== undefined && { filterEventTypes: input.filterEventTypes }),
           ...(input.headers !== undefined && { headers: input.headers }),
+          ...(input.rateLimitPerSecond !== undefined && {
+            rateLimitPerSecond: input.rateLimitPerSecond,
+            // A new limit starts with a fresh bucket.
+            rateLimitTat: null,
+          }),
           ...(input.status !== undefined && {
             status: input.status,
             // A manual change of state supersedes the reason the system disabled it.

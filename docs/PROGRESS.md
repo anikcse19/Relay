@@ -4,13 +4,17 @@ Roadmap for Relay (~2 hours/day, ~12 weeks). Updated at the end of every work se
 
 ## ▶ Next up
 
-**1. Open a PR for `feat/endpoint-health` (Session 10) and merge it.** Migration
-`0002_endpoint_health` is **already applied to Neon `main`** (developer chose to migrate main
-directly: additive columns only), so no Neon branch exists for this session.
+**1. Open a PR for `feat/rate-limits` (Session 11) and merge it.** Migration
+`0003_endpoint_rate_limit` is **already applied to Neon `main`** (developer chose to migrate main
+directly: one nullable column). Before merging, in the browser: add/edit an endpoint with a rate
+limit (form validation 1–1000, empty = unlimited), see `≤ N/s` in the list.
 
-**2. Phase 2 · Session 11: Per-endpoint rate limits** (`rate_limit_per_second` already
-exists in the schema → likely no migration). Token bucket per endpoint in Postgres, deferring
-with `DeferError` when empty; API/dashboard field on the endpoint form. ADR-0014.
+**2. Phase 2 wrap-up · Session 12: Failure notifications + retention.** Email/webhook alert when
+an endpoint's circuit opens or it's auto-disabled (outbox row in the attempt transaction → a
+notifier job), and a retention job that prunes `delivery_attempts` bodies older than N days
+(keeps Neon's free 0.5 GB in check). Likely one migration (notifications/outbox table) → ask:
+Neon branch or migrate `main`. Check :3001/:3100 before any build (memory: dev stack hot-reload).
+ADR-0015. Then Phase 3 (live tail via LISTEN/NOTIFY → WebSocket).
 
 **Local dev ports:** port 3000 is taken by another app on this machine. Run the API with
 `PORT=3100 BETTER_AUTH_URL=http://localhost:3100` (root `.env`) and set
@@ -60,7 +64,10 @@ with `DeferError` when empty; API/dashboard field on the endpoint form. ADR-0014
 - [x] **Session 10:** Endpoint health columns (migration 0002), circuit breaker with
       half-open probe, auto-disable after 5 days failing, `DeferError` (deferrals never
       dead-letter jobs), health on the Endpoints page, re-enable resets health (ADR-0013)
-- [ ] Per-endpoint rate limits
+- [x] **Session 11:** Per-endpoint rate limits with GCRA (one `rate_limit_tat` column, atomic
+      claim in SQL, deferral without attempts, manual bypass), API + form field + list badge,
+      inspector shows "Next attempt" for held deliveries (ADR-0014)
+- [ ] **Session 12:** Failure notifications (circuit open / auto-disabled) + attempt retention
 
 ### Phase 3: Real-time & UX
 
@@ -93,3 +100,4 @@ with `DeferError` when empty; API/dashboard field on the endpoint form. ADR-0014
 | 2026-11-12 | Phase 1 · S8  | Branch `feat/endpoints-events`. Endpoints page, Events list + drawer + delivery inspector, test events, checklist 4/4 verified live through the dashboard. Phase 1 complete. 238 tests passing.                   |
 | 2026-11-12 | Phase 2 · S9  | Branch `feat/reliability`. Connect-time SSRF guard + replay, ADR-0012. Live replay through the dev stack (400 → fix → replay → 200, 409 on double replay). Fixed CI timeouts + a jitter flake. 259 tests passing. |
 | 2026-11-12 | Phase 2 · S10 | Branch `feat/endpoint-health`. Health + circuit breaker + auto-disable, queue deferral fix, ADR-0013. Vitest timeouts for queue/db too. 275 tests passing (3 full runs). Migration pending on a Neon branch.      |
+| 2026-11-12 | Phase 2 · S11 | Branch `feat/rate-limits`. GCRA rate limits, ADR-0014. Migration 0003 applied to Neon `main`. Live: 10 events at 2/s limit → 5.7 s, none dropped. 284 tests passing (2 full runs).                                |

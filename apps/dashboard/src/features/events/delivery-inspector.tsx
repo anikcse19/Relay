@@ -99,11 +99,13 @@ function InspectorBody({ delivery, replay }: { delivery: DeliveryDetail; replay:
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md border px-4 py-3 text-sm">
         <StatusBadge status={delivery.status} />
         <span>{deliverySummary(delivery.status, delivery.attemptCount)}</span>
-        {delivery.status === 'retrying' && delivery.nextAttemptAt && (
-          <span className="text-muted-foreground">
-            Next attempt <RelativeTime value={delivery.nextAttemptAt} />
-          </span>
-        )}
+        {/* Pending covers deliveries held by an endpoint's rate limit or circuit breaker. */}
+        {(delivery.status === 'retrying' || delivery.status === 'pending') &&
+          delivery.nextAttemptAt && (
+            <span className="text-muted-foreground">
+              Next attempt <RelativeTime value={delivery.nextAttemptAt} />
+            </span>
+          )}
         {replay && <div className="ml-auto">{replay}</div>}
       </div>
 

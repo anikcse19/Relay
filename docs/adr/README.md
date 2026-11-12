@@ -18,5 +18,6 @@ ADRs are immutable once accepted; a changed decision gets a new ADR that superse
 | [0011](0011-tenant-routes-and-endpoint-safety.md)  | Dual-auth tenant routes, endpoint URL safety, pagination | Accepted |
 | [0012](0012-connect-time-ssrf-guard-and-replay.md) | Connect-time SSRF guard and manual replay                | Accepted |
 | [0013](0013-endpoint-health-circuit-breaker.md)    | Endpoint health, circuit breaker and auto-disable        | Accepted |
+| [0014](0014-per-endpoint-rate-limits.md)           | Per-endpoint rate limits with GCRA                       | Accepted |
 
 Template: [`template.md`](template.md)
