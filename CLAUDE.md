@@ -33,6 +33,7 @@ pnpm db:generate      # after editing packages/db/src/schema.ts — commit the m
 pnpm db:migrate       # apply migrations to the DATABASE_URL in .env
 pnpm --filter @relay/api dev   # API at http://localhost:3000, docs at /docs
 pnpm --filter @relay/worker dev  # delivery worker (polls the Postgres queue)
+pnpm --filter @relay/dashboard dev  # dashboard at http://localhost:3001 (needs apps/dashboard/.env.local → API_URL)
 ```
 
 Before declaring work done, run the same checks as CI: `format:check`, `lint`, `build`,
@@ -42,6 +43,9 @@ Before declaring work done, run the same checks as CI: `format:check`, `lint`, `
 
 - `apps/api` — NestJS 12 (ESM) on Fastify. `createApp()` in `src/app.ts` is shared by
   `main.ts` and tests (tests use `fastify.inject`, no network).
+- `apps/dashboard` — Next.js 16 App Router + Tailwind v4. `src/proxy.ts` forwards `/auth/*` and `/v1/*`
+  to `API_URL` at runtime (same-origin, ADR-0010). Owned UI primitives in `src/components/ui`,
+  features in `src/features/<domain>`. Routes: `/{orgSlug}/{envId}/…`.
 - `apps/worker` — plain Node delivery worker: `Consumer` on `QUEUES.delivery`, signs + sends,
   records `delivery_attempts`. `startWorker()` in `src/worker.ts` is shared by `main.ts` and tests.
 - `packages/shared` — prefixed ULID ids (`evt_…`), Standard Webhooks signing, retry backoff.
