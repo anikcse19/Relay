@@ -4,6 +4,7 @@ import { Logo } from '@/components/logo';
 import type { Me } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { type Workspace, workspacePath } from '@/lib/workspace';
+import { NotificationBell } from '@/features/notifications/notification-bell';
 import { CommandPalette } from './command-palette';
 import { SIDEBAR_COOKIE } from './constants';
 import { Sidebar } from './sidebar';
@@ -56,6 +57,10 @@ export async function AppShell({
         )}
         <div className="ml-auto flex items-center gap-2">
           <CommandPalette orgs={me.organizations} org={org} env={env} />
+          <NotificationBell
+            environmentId={env.id}
+            endpointsHref={workspacePath(org, env, '/endpoints')}
+          />
           <UserMenu name={me.user.name} email={me.user.email} />
         </div>
       </header>

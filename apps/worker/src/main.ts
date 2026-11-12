@@ -42,6 +42,7 @@ function bootstrap() {
       circuitThreshold: env.CIRCUIT_FAILURE_THRESHOLD,
       autoDisableAfterMs: env.AUTO_DISABLE_AFTER_HOURS * 3_600_000,
     },
+    retentionDays: env.RETENTION_DAYS,
   });
 
   let stopping = false;

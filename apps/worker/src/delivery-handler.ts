@@ -236,7 +236,7 @@ export async function processDelivery(
     });
 
     if (decision.status === 'succeeded') {
-      await recordSuccess(tx, row.endpointId);
+      await recordSuccess(tx, row.endpointId, health);
       return { autoDisabled: false };
     }
     const { disabled } = await recordFailure(tx, row.endpointId, health);

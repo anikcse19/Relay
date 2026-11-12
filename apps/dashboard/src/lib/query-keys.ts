@@ -17,6 +17,9 @@ export const queryKeys = {
       ['events', environmentId, 'list', filters] as const,
     detail: (environmentId: string, id: string) => ['events', environmentId, 'detail', id] as const,
   },
+  notifications: {
+    list: (environmentId: string) => ['notifications', environmentId] as const,
+  },
   deliveries: {
     detail: (environmentId: string, id: string) => ['deliveries', environmentId, id] as const,
   },

@@ -4,17 +4,18 @@ Roadmap for Relay (~2 hours/day, ~12 weeks). Updated at the end of every work se
 
 ## ▶ Next up
 
-**1. Open a PR for `feat/rate-limits` (Session 11) and merge it.** Migration
-`0003_endpoint_rate_limit` is **already applied to Neon `main`** (developer chose to migrate main
-directly: one nullable column). Before merging, in the browser: add/edit an endpoint with a rate
-limit (form validation 1–1000, empty = unlimited), see `≤ N/s` in the list.
+**1. Open a PR for `feat/notifications` (Session 12) and merge it.** Migration
+`0004_notifications` is **already applied to Neon `main`** (developer chose main again). Before
+merging, in the browser: the bell in the header (unread badge, "All quiet" empty state, an alert
+opens the Endpoints page, "Mark all read").
 
-**2. Phase 2 wrap-up · Session 12: Failure notifications + retention.** Email/webhook alert when
-an endpoint's circuit opens or it's auto-disabled (outbox row in the attempt transaction → a
-notifier job), and a retention job that prunes `delivery_attempts` bodies older than N days
-(keeps Neon's free 0.5 GB in check). Likely one migration (notifications/outbox table) → ask:
-Neon branch or migrate `main`. Check :3001/:3100 before any build (memory: dev stack hot-reload).
-ADR-0015. Then Phase 3 (live tail via LISTEN/NOTIFY → WebSocket).
+**2. Phase 3 · Session 13: Live tail.** Postgres `LISTEN/NOTIFY` → API WebSocket (session-auth,
+environment-scoped) → dashboard Events list updates live: "↑ N new events" pill (never shifts
+what the user is reading), ● Live / ◌ Reconnecting… / ○ Offline indicator, pause/resume, auto-pause
+when the tab is hidden (guidelines §4.2). The worker/API `NOTIFY` on event ingest + delivery
+state changes; the bell and the inspector switch from polling to push. Also brings
+time-to-first-attempt under 1 s (worker wakes on NOTIFY instead of polling). ADR-0016.
+No migration expected. Check :3001/:3100 before any build (memory: dev stack hot-reload).
 
 **Local dev ports:** port 3000 is taken by another app on this machine. Run the API with
 `PORT=3100 BETTER_AUTH_URL=http://localhost:3100` (root `.env`) and set
@@ -56,7 +57,7 @@ ADR-0015. Then Phase 3 (live tail via LISTEN/NOTIFY → WebSocket).
       send test event), drawer with event detail + delivery inspector (timeline with deltas,
       request/response tabs, plain-English failures), checklist 2–4 data-driven
 
-### Phase 2: Reliability (in progress)
+### Phase 2: Reliability ✅
 
 - [x] **Session 9:** Connect-time SSRF guard (undici agent lookup, `blocked_address`, shared
       blocklist/policy), manual replay (API + worker `trigger: 'manual'` + inspector button),
@@ -67,7 +68,9 @@ ADR-0015. Then Phase 3 (live tail via LISTEN/NOTIFY → WebSocket).
 - [x] **Session 11:** Per-endpoint rate limits with GCRA (one `rate_limit_tat` column, atomic
       claim in SQL, deferral without attempts, manual bypass), API + form field + list badge,
       inspector shows "Next attempt" for held deliveries (ADR-0014)
-- [ ] **Session 12:** Failure notifications (circuit open / auto-disabled) + attempt retention
+- [x] **Session 12:** In-app notifications written in the health transaction (failing /
+      disabled / recovered, once each), notifications API + header bell, hourly retention
+      (`RETENTION_DAYS`, batched, advisory-locked, ULID range cutoff) (ADR-0015)
 
 ### Phase 3: Real-time & UX
 
@@ -87,17 +90,18 @@ ADR-0015. Then Phase 3 (live tail via LISTEN/NOTIFY → WebSocket).
 
 ## Session log
 
-| Date       | Session       | Done                                                                                                                                                                                                              |
-| ---------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-11-11 | Phase 0       | Monorepo, RFC + 5 ADRs, UI/UX guidelines, shared/db/queue packages (31 tests), CI. Pushed to GitHub; CI green.                                                                                                    |
-| 2026-11-12 | Phase 1 · S1  | Neon connected and migrated. API skeleton (`apps/api`), ADR-0006, CI badge. 45 tests passing. Added CLAUDE.md + tracker.                                                                                          |
-| 2026-11-12 | Phase 1 · S2  | Better Auth on `/auth/*`, identity tables + migration (applied to Neon), workspace provisioning, `/v1/me`, ADR-0007. 61 tests passing.                                                                            |
-| 2026-11-12 | Phase 1 · S3  | Branch `feat/api-keys`. API key management + auth, `POST /v1/events` (one-transaction fan-out, idempotency, atomicity test), ADR-0008. 88 tests passing.                                                          |
-| 2026-11-12 | Phase 1 · S4  | Branch `feat/delivery-worker`. `apps/worker` with retry policy, error classes, redirect/blocked-port handling, ADR-0009. Live E2E on Neon: delivered + signature verified in ~1.5 s. 136 tests passing.           |
-| 2026-11-12 | Phase 1 · S5  | Branch `feat/dashboard-shell` (not merged yet). Next.js 16 dashboard foundations; caught build-time rewrite baking → runtime `proxy.ts`; ADR-0010. Live E2E via dashboard → API → Neon. 144 tests passing.        |
-| 2026-11-12 | Phase 1 · S6  | Branch `feat/dashboard-shell`. API keys page + ⌘K palette + collapsible sidebar; live E2E of key lifecycle through the dashboard proxy. 156 tests passing.                                                        |
-| 2026-11-12 | Phase 1 · S7  | Branch `feat/endpoints-events` (from `feat/dashboard-shell`). Endpoints/events/deliveries API with dual auth, URL policy, cursor pagination, ADR-0011. Live E2E on Neon incl. 503→retry→200. 224 tests passing.   |
-| 2026-11-12 | Phase 1 · S8  | Branch `feat/endpoints-events`. Endpoints page, Events list + drawer + delivery inspector, test events, checklist 4/4 verified live through the dashboard. Phase 1 complete. 238 tests passing.                   |
-| 2026-11-12 | Phase 2 · S9  | Branch `feat/reliability`. Connect-time SSRF guard + replay, ADR-0012. Live replay through the dev stack (400 → fix → replay → 200, 409 on double replay). Fixed CI timeouts + a jitter flake. 259 tests passing. |
-| 2026-11-12 | Phase 2 · S10 | Branch `feat/endpoint-health`. Health + circuit breaker + auto-disable, queue deferral fix, ADR-0013. Vitest timeouts for queue/db too. 275 tests passing (3 full runs). Migration pending on a Neon branch.      |
-| 2026-11-12 | Phase 2 · S11 | Branch `feat/rate-limits`. GCRA rate limits, ADR-0014. Migration 0003 applied to Neon `main`. Live: 10 events at 2/s limit → 5.7 s, none dropped. 284 tests passing (2 full runs).                                |
+| Date       | Session       | Done                                                                                                                                                                                                                                                      |
+| ---------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-11-11 | Phase 0       | Monorepo, RFC + 5 ADRs, UI/UX guidelines, shared/db/queue packages (31 tests), CI. Pushed to GitHub; CI green.                                                                                                                                            |
+| 2026-11-12 | Phase 1 · S1  | Neon connected and migrated. API skeleton (`apps/api`), ADR-0006, CI badge. 45 tests passing. Added CLAUDE.md + tracker.                                                                                                                                  |
+| 2026-11-12 | Phase 1 · S2  | Better Auth on `/auth/*`, identity tables + migration (applied to Neon), workspace provisioning, `/v1/me`, ADR-0007. 61 tests passing.                                                                                                                    |
+| 2026-11-12 | Phase 1 · S3  | Branch `feat/api-keys`. API key management + auth, `POST /v1/events` (one-transaction fan-out, idempotency, atomicity test), ADR-0008. 88 tests passing.                                                                                                  |
+| 2026-11-12 | Phase 1 · S4  | Branch `feat/delivery-worker`. `apps/worker` with retry policy, error classes, redirect/blocked-port handling, ADR-0009. Live E2E on Neon: delivered + signature verified in ~1.5 s. 136 tests passing.                                                   |
+| 2026-11-12 | Phase 1 · S5  | Branch `feat/dashboard-shell` (not merged yet). Next.js 16 dashboard foundations; caught build-time rewrite baking → runtime `proxy.ts`; ADR-0010. Live E2E via dashboard → API → Neon. 144 tests passing.                                                |
+| 2026-11-12 | Phase 1 · S6  | Branch `feat/dashboard-shell`. API keys page + ⌘K palette + collapsible sidebar; live E2E of key lifecycle through the dashboard proxy. 156 tests passing.                                                                                                |
+| 2026-11-12 | Phase 1 · S7  | Branch `feat/endpoints-events` (from `feat/dashboard-shell`). Endpoints/events/deliveries API with dual auth, URL policy, cursor pagination, ADR-0011. Live E2E on Neon incl. 503→retry→200. 224 tests passing.                                           |
+| 2026-11-12 | Phase 1 · S8  | Branch `feat/endpoints-events`. Endpoints page, Events list + drawer + delivery inspector, test events, checklist 4/4 verified live through the dashboard. Phase 1 complete. 238 tests passing.                                                           |
+| 2026-11-12 | Phase 2 · S9  | Branch `feat/reliability`. Connect-time SSRF guard + replay, ADR-0012. Live replay through the dev stack (400 → fix → replay → 200, 409 on double replay). Fixed CI timeouts + a jitter flake. 259 tests passing.                                         |
+| 2026-11-12 | Phase 2 · S10 | Branch `feat/endpoint-health`. Health + circuit breaker + auto-disable, queue deferral fix, ADR-0013. Vitest timeouts for queue/db too. 275 tests passing (3 full runs). Migration pending on a Neon branch.                                              |
+| 2026-11-12 | Phase 2 · S11 | Branch `feat/rate-limits`. GCRA rate limits, ADR-0014. Migration 0003 applied to Neon `main`. Live: 10 events at 2/s limit → 5.7 s, none dropped. 284 tests passing (2 full runs).                                                                        |
+| 2026-11-12 | Phase 2 · S12 | Branch `feat/notifications`. Notifications + bell + retention, ADR-0015. Migration 0004 applied to Neon `main`. Live: failing alert → half-open probe → recovered alert; retention pass on Neon clean. Phase 2 complete. 296 tests passing (2 full runs). |

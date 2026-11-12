@@ -24,6 +24,7 @@ export const ID_PREFIXES = {
   event: 'evt',
   delivery: 'dlv',
   attempt: 'att',
+  notification: 'ntf',
   request: 'req',
 } as const;
 
