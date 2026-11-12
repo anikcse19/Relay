@@ -73,8 +73,19 @@ export interface Endpoint {
   headerNames: string[];
   secretRotatedAt: string | null;
   previousSecretExpiresAt: string | null;
+  health: EndpointHealth;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Maintained by the worker on every attempt (ADR-0013). */
+export interface EndpointHealth {
+  consecutiveFailures: number;
+  /** Start of the current failure streak; `null` when healthy. */
+  failingSince: string | null;
+  /** While set, scheduled deliveries wait instead of being sent. */
+  circuitOpenUntil: string | null;
+  lastSuccessAt: string | null;
 }
 
 /** Returned on create and rotate: the only times the signing secret is available. */

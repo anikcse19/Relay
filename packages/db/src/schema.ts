@@ -258,6 +258,14 @@ export const endpoints = pgTable(
     rateLimitPerSecond: integer('rate_limit_per_second'),
     /** Extra static headers sent with each delivery. */
     headers: jsonb('headers').$type<Record<string, string>>().notNull().default({}),
+    // ── Health (maintained by the worker on every attempt, ADR-0013) ──
+    /** Failed attempts in a row; reset by any success. Drives the circuit breaker. */
+    consecutiveFailures: integer('consecutive_failures').notNull().default(0),
+    /** First failure of the current streak; drives auto-disable. `null` when healthy. */
+    failingSince: timestamp('failing_since', { withTimezone: true }),
+    /** While in the future, scheduled deliveries wait instead of being sent. */
+    circuitOpenUntil: timestamp('circuit_open_until', { withTimezone: true }),
+    lastSuccessAt: timestamp('last_success_at', { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

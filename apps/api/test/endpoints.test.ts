@@ -242,6 +242,38 @@ describe('endpoints', () => {
       });
     });
 
+    it('re-enabling an auto-disabled endpoint resets its health', async () => {
+      const ep = await createEndpoint();
+      expect(ep.health).toEqual({
+        consecutiveFailures: 0,
+        failingSince: null,
+        circuitOpenUntil: null,
+        lastSuccessAt: null,
+      });
+      // As the worker leaves it after days of failures.
+      await db
+        .update(endpoints)
+        .set({
+          status: 'disabled',
+          disabledReason: 'Disabled automatically: every delivery failed for 5 days.',
+          consecutiveFailures: 120,
+          failingSince: new Date(Date.now() - 6 * 24 * 3_600_000),
+          circuitOpenUntil: new Date(Date.now() + 600_000),
+        })
+        .where(eq(endpoints.id, ep.id));
+
+      const listed = (await asUser(owner, 'GET', `${base(owner)}/${ep.id}`)).json();
+      expect(listed).toMatchObject({ status: 'disabled', health: { consecutiveFailures: 120 } });
+      expect(listed.health.circuitOpenUntil).not.toBeNull();
+
+      const res = await asUser(owner, 'PATCH', `${base(owner)}/${ep.id}`, { status: 'active' });
+      expect(res.json()).toMatchObject({
+        status: 'active',
+        disabledReason: null,
+        health: { consecutiveFailures: 0, failingSince: null, circuitOpenUntil: null },
+      });
+    });
+
     it('rejects an empty update', async () => {
       const ep = await createEndpoint();
       expect((await asUser(owner, 'PATCH', `${base(owner)}/${ep.id}`, {})).statusCode).toBe(422);

@@ -88,6 +88,18 @@ describe('PostgresQueue', () => {
     expect(await queue.dequeue('q', { limit: 1, ...lease })).toHaveLength(0);
   });
 
+  it('never dead-letters a deferred job: deferral refunds the attempt', async () => {
+    await queue.enqueue('q', {}, { maxAttempts: 1 });
+    for (let i = 0; i < 5; i++) {
+      const [job] = await queue.dequeue('q', { limit: 1, ...lease });
+      expect(job?.attempts).toBe(1);
+      expect(await queue.retry(job!, { delayMs: 0, refundAttempt: true })).toBe('scheduled');
+    }
+    // A real failure still counts.
+    const [job] = await queue.dequeue('q', { limit: 1, ...lease });
+    expect(await queue.retry(job!, { delayMs: 0, error: 'boom' })).toBe('dead');
+  });
+
   it('reclaims expired leases and fences out the stale worker', async () => {
     await queue.enqueue('q', { n: 1 });
     const [stale] = await queue.dequeue('q', { limit: 1, leaseMs: 1, workerId: 'slow' });

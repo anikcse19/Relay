@@ -112,12 +112,17 @@ export class PostgresQueue implements QueueTransport {
 
   async retry(
     job: Job,
-    { delayMs, error }: { delayMs: number; error?: string },
+    {
+      delayMs,
+      error,
+      refundAttempt = false,
+    }: { delayMs: number; error?: string; refundAttempt?: boolean },
   ): Promise<RetryOutcome> {
     const { rows } = await this.sql.query<{ status: 'pending' | 'dead' }>(
       `UPDATE queue_jobs
-       SET status = CASE WHEN attempts >= max_attempts THEN 'dead'::job_status
+       SET status = CASE WHEN NOT $5 AND attempts >= max_attempts THEN 'dead'::job_status
                          ELSE 'pending'::job_status END,
+           attempts = CASE WHEN $5 THEN greatest(attempts - 1, 0) ELSE attempts END,
            run_at = now() + ($3::double precision * interval '1 millisecond'),
            locked_by = NULL,
            locked_until = NULL,
@@ -125,7 +130,7 @@ export class PostgresQueue implements QueueTransport {
            updated_at = now()
        WHERE id = $1 AND status = 'active' AND locked_by = $2
        RETURNING status`,
-      [job.id, job.leaseToken, delayMs, error ?? null],
+      [job.id, job.leaseToken, delayMs, error ?? null, refundAttempt],
     );
     const row = rows[0];
     if (!row) return 'lease_lost';

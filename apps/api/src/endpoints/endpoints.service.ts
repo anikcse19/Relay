@@ -35,6 +35,15 @@ export interface PublicEndpoint {
   secretRotatedAt: Date | null;
   /** Until then, deliveries are also signed with the previous secret. */
   previousSecretExpiresAt: Date | null;
+  /** Maintained by the worker on every attempt (ADR-0013). */
+  health: {
+    consecutiveFailures: number;
+    /** Start of the current failure streak; `null` when healthy. */
+    failingSince: Date | null;
+    /** While in the future, scheduled deliveries wait instead of being sent. */
+    circuitOpenUntil: Date | null;
+    lastSuccessAt: Date | null;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -54,6 +63,13 @@ export function toPublicEndpoint(row: EndpointRow, now = Date.now()): PublicEndp
     headerNames: Object.keys(row.headers).sort(),
     secretRotatedAt: row.secretRotatedAt,
     previousSecretExpiresAt: graceEnds && graceEnds.getTime() > now ? graceEnds : null,
+    health: {
+      consecutiveFailures: row.consecutiveFailures,
+      failingSince: row.failingSince,
+      circuitOpenUntil:
+        row.circuitOpenUntil && row.circuitOpenUntil.getTime() > now ? row.circuitOpenUntil : null,
+      lastSuccessAt: row.lastSuccessAt,
+    },
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -141,6 +157,14 @@ export class EndpointsService {
             // A manual change of state supersedes the reason the system disabled it.
             disabledReason: null,
           }),
+          // Re-enabling or resuming is the user saying "try again": start from a
+          // clean slate, or an old failure streak would re-disable it at once.
+          ...(input.status === 'active' &&
+            current.status !== 'active' && {
+              consecutiveFailures: 0,
+              failingSince: null,
+              circuitOpenUntil: null,
+            }),
         })
         .where(eq(endpoints.id, id))
         .returning();

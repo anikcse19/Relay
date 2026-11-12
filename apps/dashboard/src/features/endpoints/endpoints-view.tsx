@@ -28,6 +28,7 @@ import type { Endpoint, Environment, Role } from '@/lib/types';
 import { useEndpoints, useUpdateEndpoint } from './api';
 import { DeleteEndpointDialog, RotateSecretDialog } from './endpoint-dialogs';
 import { EndpointFormDialog } from './endpoint-form-dialog';
+import { failuresInARow, healthSummary } from './health';
 import { describeFilter } from './helpers';
 
 const MANAGE_ROLES: Role[] = ['owner', 'admin'];
@@ -132,10 +133,11 @@ export function EndpointsView({
                   <td className="px-4 py-2.5">
                     <StatusBadge status={endpoint.status} />
                     {endpoint.disabledReason && (
-                      <p className="mt-0.5 text-xs text-muted-foreground">
+                      <p className="mt-0.5 max-w-64 text-xs text-muted-foreground">
                         {endpoint.disabledReason}
                       </p>
                     )}
+                    <HealthLine endpoint={endpoint} />
                     {endpoint.previousSecretExpiresAt && (
                       <p className="mt-0.5 text-xs text-muted-foreground">
                         Old secret valid until{' '}
@@ -180,7 +182,8 @@ export function EndpointsView({
                             <DropdownMenuItem
                               onSelect={() => update.mutate({ id: endpoint.id, status: 'active' })}
                             >
-                              <Play aria-hidden /> Resume deliveries
+                              <Play aria-hidden />{' '}
+                              {endpoint.status === 'disabled' ? 'Re-enable' : 'Resume deliveries'}
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuItem
@@ -226,4 +229,33 @@ export function EndpointsView({
       />
     </div>
   );
+}
+
+/** Health under the status badge (guidelines §1: status at a glance). */
+function HealthLine({ endpoint }: { endpoint: Endpoint }) {
+  const health = healthSummary(endpoint);
+  if (!health) return null;
+  switch (health.kind) {
+    case 'circuit_open':
+      return (
+        <p className="mt-0.5 max-w-64 text-xs text-warning">
+          {failuresInARow(health.failures)}. Deliveries are waiting so your server can recover; next
+          try <RelativeTime value={health.until} />.
+        </p>
+      );
+    case 'failing':
+      return (
+        <p className="mt-0.5 text-xs text-danger">
+          {failuresInARow(health.failures)}, failing since <RelativeTime value={health.since} />
+        </p>
+      );
+    case 'healthy':
+      return (
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          Last delivered <RelativeTime value={health.lastSuccessAt} />
+        </p>
+      );
+    case 'no_deliveries':
+      return <p className="mt-0.5 text-xs text-muted-foreground">No deliveries yet</p>;
+  }
 }
