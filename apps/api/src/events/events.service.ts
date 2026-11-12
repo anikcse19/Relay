@@ -1,20 +1,26 @@
 import { isDeepStrictEqual } from 'node:util';
-import { ConflictException, Inject, Injectable } from '@nestjs/common';
+import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import {
   and,
+  asc,
+  count,
   type Database,
   deliveries,
+  desc,
   endpoints,
   eq,
   events,
+  inArray,
   isNull,
+  lt,
   or,
   queueJobs,
   sql,
 } from '@relay/db';
 import { type DeliveryJobPayload, newId, QUEUES } from '@relay/shared';
-import type { ApiKeyContext } from '../api-keys/api-key.guard.js';
+import { type Page, toPage } from '../common/pagination.js';
 import { DB } from '../database/database.module.js';
+import type { Tenant } from '../tenancy/tenant.guard.js';
 import type { CreateEventInput } from './events.schema.js';
 
 export interface IngestResult {
@@ -39,7 +45,7 @@ export class EventsService {
    * can lose an event, so no separate outbox relay is needed.
    */
   async ingest(
-    tenant: ApiKeyContext,
+    tenant: Pick<Tenant, 'organizationId' | 'environmentId'>,
     input: CreateEventInput,
     idempotencyKey?: string,
   ): Promise<IngestResult> {
@@ -130,4 +136,97 @@ export class EventsService {
       return { event: created, replayed: false, deliveryCount: rows.length };
     });
   }
+
+  /**
+   * Lists events newest first, each with a count of its deliveries per
+   * status. Payloads are left out to keep pages small; fetch one event for it.
+   */
+  async list(
+    tenant: Tenant,
+    query: { limit: number; cursor?: string; type?: string },
+  ): Promise<Page<EventSummary>> {
+    const rows = await this.db
+      .select({ id: events.id, type: events.eventType, createdAt: events.createdAt })
+      .from(events)
+      .where(
+        and(
+          eq(events.environmentId, tenant.environmentId),
+          query.type ? eq(events.eventType, query.type) : undefined,
+          query.cursor ? lt(events.id, query.cursor) : undefined,
+        ),
+      )
+      .orderBy(desc(events.id))
+      .limit(query.limit + 1);
+    const page = toPage(rows, query.limit);
+
+    // One grouped query for the whole page, not one per event.
+    const counts = page.data.length
+      ? await this.db
+          .select({ eventId: deliveries.eventId, status: deliveries.status, n: count() })
+          .from(deliveries)
+          .where(
+            inArray(
+              deliveries.eventId,
+              page.data.map((e) => e.id),
+            ),
+          )
+          .groupBy(deliveries.eventId, deliveries.status)
+      : [];
+
+    return {
+      ...page,
+      data: page.data.map((event) => {
+        const deliveryCounts = emptyCounts();
+        for (const c of counts) if (c.eventId === event.id) deliveryCounts[c.status] = c.n;
+        return { ...event, deliveryCounts };
+      }),
+    };
+  }
+
+  /** One event with its payload and a row per endpoint it was sent to. */
+  async get(tenant: Tenant, id: string) {
+    const [event] = await this.db
+      .select({
+        id: events.id,
+        type: events.eventType,
+        data: events.payload,
+        idempotencyKey: events.idempotencyKey,
+        createdAt: events.createdAt,
+      })
+      .from(events)
+      .where(and(eq(events.id, id), eq(events.environmentId, tenant.environmentId)))
+      .limit(1);
+    if (!event) throw new NotFoundException('Event not found.');
+
+    const sent = await this.db
+      .select({
+        id: deliveries.id,
+        endpointId: deliveries.endpointId,
+        endpointUrl: endpoints.url,
+        status: deliveries.status,
+        attemptCount: deliveries.attemptCount,
+        lastStatusCode: deliveries.lastStatusCode,
+        lastAttemptAt: deliveries.lastAttemptAt,
+        nextAttemptAt: deliveries.nextAttemptAt,
+      })
+      .from(deliveries)
+      .innerJoin(endpoints, eq(endpoints.id, deliveries.endpointId))
+      .where(eq(deliveries.eventId, event.id))
+      .orderBy(asc(deliveries.id));
+
+    return { ...event, deliveries: sent };
+  }
+}
+
+type DeliveryStatus = (typeof deliveries.$inferSelect)['status'];
+
+export interface EventSummary {
+  id: string;
+  type: string;
+  createdAt: Date;
+  deliveryCounts: Record<DeliveryStatus, number>;
+}
+
+function emptyCounts(): Record<DeliveryStatus, number> {
+  return { pending: 0, retrying: 0, succeeded: 0, failed: 0, cancelled: 0 };
 }

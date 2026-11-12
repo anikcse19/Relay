@@ -2,11 +2,14 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
   Headers,
   HttpCode,
   HttpStatus,
   Inject,
+  Param,
   Post,
+  Query,
   Res,
   UseGuards,
 } from '@nestjs/common';
@@ -15,26 +18,87 @@ import {
   ApiBearerAuth,
   ApiBody,
   ApiConflictResponse,
+  ApiCookieAuth,
+  ApiForbiddenResponse,
   ApiHeader,
+  ApiNotFoundResponse,
+  ApiOkResponse,
   ApiOperation,
+  ApiQuery,
   ApiTags,
   ApiUnauthorizedResponse,
   ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
 import type { FastifyReply } from 'fastify';
-import { type ApiKeyContext, ApiKeyAuth, ApiKeyGuard } from '../api-keys/api-key.guard.js';
+import { pageSchema, paginationQueryDocs } from '../common/pagination.js';
 import { openApiSchema } from '../common/zod-openapi.js';
-import { createEventSchema, IDEMPOTENCY_KEY_PATTERN } from './events.schema.js';
+import {
+  CurrentTenant,
+  ENVIRONMENT_SCOPED,
+  RequireRoles,
+  type Tenant,
+  TenantGuard,
+} from '../tenancy/tenant.guard.js';
+import { createEventSchema, IDEMPOTENCY_KEY_PATTERN, listEventsSchema } from './events.schema.js';
 import { EventsService } from './events.service.js';
+
+const statusCounts = {
+  type: 'object',
+  properties: Object.fromEntries(
+    ['pending', 'retrying', 'succeeded', 'failed', 'cancelled'].map((s) => [
+      s,
+      { type: 'integer' },
+    ]),
+  ),
+} as const;
+
+const eventSummarySchema = {
+  type: 'object',
+  properties: {
+    id: { type: 'string', example: 'evt_01JD3X8Z5K2M4N6P8Q0R2S4T6V' },
+    type: { type: 'string', example: 'invoice.paid' },
+    createdAt: { type: 'string', format: 'date-time' },
+    deliveryCounts: statusCounts,
+  },
+};
+
+const eventDetailSchema = {
+  type: 'object',
+  properties: {
+    id: { type: 'string' },
+    type: { type: 'string' },
+    data: { type: 'object' },
+    idempotencyKey: { type: 'string', nullable: true },
+    createdAt: { type: 'string', format: 'date-time' },
+    deliveries: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          endpointId: { type: 'string' },
+          endpointUrl: { type: 'string' },
+          status: { type: 'string' },
+          attemptCount: { type: 'integer' },
+          lastStatusCode: { type: 'integer', nullable: true },
+          lastAttemptAt: { type: 'string', format: 'date-time', nullable: true },
+          nextAttemptAt: { type: 'string', format: 'date-time', nullable: true },
+        },
+      },
+    },
+  },
+};
 
 @ApiTags('Events')
 @ApiBearerAuth('apiKey')
-@Controller('v1/events')
-@UseGuards(ApiKeyGuard)
+@ApiCookieAuth('session')
+@Controller(['v1/events', `${ENVIRONMENT_SCOPED}/events`])
+@UseGuards(TenantGuard)
 export class EventsController {
   constructor(@Inject(EventsService) private readonly events: EventsService) {}
 
   @Post()
+  @RequireRoles('owner', 'admin')
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({
     summary: 'Send an event',
@@ -64,10 +128,11 @@ export class EventsController {
     },
   })
   @ApiUnauthorizedResponse({ description: 'Missing, invalid, revoked or expired API key' })
+  @ApiForbiddenResponse({ description: 'Dashboard users need the owner or admin role' })
   @ApiConflictResponse({ description: 'Idempotency-Key reused with a different body' })
   @ApiUnprocessableEntityResponse({ description: 'Invalid event' })
   async create(
-    @ApiKeyAuth() tenant: ApiKeyContext,
+    @CurrentTenant() tenant: Tenant,
     @Body() body: unknown,
     @Headers('idempotency-key') idempotencyKey: string | undefined,
     @Res({ passthrough: true }) reply: FastifyReply,
@@ -86,5 +151,23 @@ export class EventsController {
       idempotencyKey: event.idempotencyKey,
       createdAt: event.createdAt,
     };
+  }
+
+  @Get()
+  @ApiOperation({ summary: 'List events, newest first, with delivery counts per status' })
+  @ApiQuery(paginationQueryDocs[0])
+  @ApiQuery(paginationQueryDocs[1])
+  @ApiQuery({ name: 'type', required: false, description: 'Only events of this exact type' })
+  @ApiOkResponse({ schema: pageSchema(eventSummarySchema) })
+  list(@CurrentTenant() tenant: Tenant, @Query() query: unknown) {
+    return this.events.list(tenant, listEventsSchema.parse(query));
+  }
+
+  @Get(':eventId')
+  @ApiOperation({ summary: 'Get an event with its payload and deliveries' })
+  @ApiOkResponse({ schema: eventDetailSchema })
+  @ApiNotFoundResponse({ description: 'Event not found' })
+  get(@CurrentTenant() tenant: Tenant, @Param('eventId') id: string) {
+    return this.events.get(tenant, id);
   }
 }
