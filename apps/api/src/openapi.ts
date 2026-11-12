@@ -22,6 +22,11 @@ export function setupOpenApi(app: NestFastifyApplication) {
     .setDescription(DESCRIPTION)
     .setVersion('1.0.0')
     .addBearerAuth({ type: 'http', scheme: 'bearer', description: 'Your Relay API key' }, 'apiKey')
+    .addCookieAuth(
+      'relay.session_token',
+      { type: 'apiKey', in: 'cookie', description: 'Dashboard session (sign in via /auth/*)' },
+      'session',
+    )
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

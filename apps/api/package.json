@@ -18,6 +18,7 @@
     "@relay/db": "workspace:*",
     "@relay/shared": "workspace:*",
     "@scalar/nestjs-api-reference": "^1.2.36",
+    "better-auth": "1.7.20",
     "fastify": "^5.12.8",
     "pino": "^10.4.0",
     "reflect-metadata": "^0.2.2",

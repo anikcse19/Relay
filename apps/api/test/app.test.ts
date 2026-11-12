@@ -2,21 +2,7 @@ import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import type { DatabaseHandle } from '@relay/db';
 import { createTestDb } from '@relay/db/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createApp } from '../src/app.js';
-import { parseEnv } from '../src/config/env.js';
-
-const env = parseEnv({
-  NODE_ENV: 'test',
-  LOG_LEVEL: 'silent',
-  DATABASE_URL: 'postgres://unused@localhost/relay',
-});
-
-async function boot(database: DatabaseHandle) {
-  const app = await createApp({ env, database });
-  await app.init();
-  await app.getHttpAdapter().getInstance().ready();
-  return app;
-}
+import { boot } from './helpers.js';
 
 describe('API (healthy database)', () => {
   let app: NestFastifyApplication;

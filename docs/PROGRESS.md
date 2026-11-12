@@ -4,13 +4,14 @@ Roadmap for Relay (~2 hours/day, ~12 weeks). Updated at the end of every work se
 
 ## ▶ Next up
 
-**Phase 1 · Session 2: Authentication & organizations**
+**Phase 1 · Session 3: API keys + `POST /v1/events`**
 
-- Add Better Auth (email + password, GitHub OAuth) with its Drizzle adapter; map its
-  organization/member model onto the existing `organizations` table (RFC-001 open question).
-- On sign-up: create an organization with default `Development` and `Production` environments.
-- Generate and apply the migration (`pnpm db:generate` → `pnpm db:migrate`).
-- Tests for sign-up → org + environments created; ADR for the auth choice.
+- API keys per environment: `rk_test_…` / `rk_live_…`, show-once, store SHA-256 hash +
+  prefix (table already exists). Session-authenticated endpoints to create/list/revoke keys.
+- `ApiKeyGuard` (Bearer) resolving `organizationId` + `environmentId` for `/v1/*` routes.
+- `POST /v1/events`: validate, idempotency key, insert event + fan-out `deliveries` +
+  enqueue jobs **in one transaction** (transactional outbox, ADR-0003/0004).
+- Tests: key auth (valid/revoked/expired/wrong env), idempotent replay, fan-out.
 
 ## Roadmap
 
@@ -27,7 +28,8 @@ Roadmap for Relay (~2 hours/day, ~12 weeks). Updated at the end of every work se
 
 - [x] **Session 1:** API skeleton: NestJS + Fastify, config validation, health probes,
       RFC 9457 errors, request IDs, pino logging, OpenAPI + Scalar docs (ADR-0006)
-- [ ] **Session 2:** Auth (Better Auth) + organizations + environments
+- [x] **Session 2:** Auth (Better Auth: email/password + GitHub), org + environments
+      provisioned on sign-up, `SessionGuard`, `GET /v1/me`, CSRF tests (ADR-0007)
 - [ ] **Session 3:** API keys + `POST /v1/events` with transactional fan-out
 - [ ] **Session 4:** Delivery worker: signed HTTP delivery, attempt logging, retries
 - [ ] **Sessions 5–6:** Dashboard (Next.js): design system, app shell, sign-in
@@ -55,7 +57,8 @@ Roadmap for Relay (~2 hours/day, ~12 weeks). Updated at the end of every work se
 
 ## Session log
 
-| Date       | Session      | Done                                                                                                                     |
-| ---------- | ------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| 2026-11-11 | Phase 0      | Monorepo, RFC + 5 ADRs, UI/UX guidelines, shared/db/queue packages (31 tests), CI. Pushed to GitHub; CI green.           |
-| 2026-11-12 | Phase 1 · S1 | Neon connected and migrated. API skeleton (`apps/api`), ADR-0006, CI badge. 45 tests passing. Added CLAUDE.md + tracker. |
+| Date       | Session      | Done                                                                                                                                   |
+| ---------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-11-11 | Phase 0      | Monorepo, RFC + 5 ADRs, UI/UX guidelines, shared/db/queue packages (31 tests), CI. Pushed to GitHub; CI green.                         |
+| 2026-11-12 | Phase 1 · S1 | Neon connected and migrated. API skeleton (`apps/api`), ADR-0006, CI badge. 45 tests passing. Added CLAUDE.md + tracker.               |
+| 2026-11-12 | Phase 1 · S2 | Better Auth on `/auth/*`, identity tables + migration (applied to Neon), workspace provisioning, `/v1/me`, ADR-0007. 61 tests passing. |

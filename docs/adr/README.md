@@ -11,5 +11,6 @@ ADRs are immutable once accepted; a changed decision gets a new ADR that superse
 | [0004](0004-queue-transport-abstraction.md)   | Queue transport abstraction                           | Accepted |
 | [0005](0005-frontend-architecture.md)         | Dashboard frontend architecture                       | Accepted |
 | [0006](0006-api-framework-and-conventions.md) | API framework (NestJS + Fastify) and HTTP conventions | Accepted |
+| [0007](0007-authentication-better-auth.md)    | Authentication with Better Auth, mapped onto tenancy  | Accepted |
 
 Template: [`template.md`](template.md)

@@ -10,12 +10,15 @@
  *
  * IDs are prefixed ULIDs generated in the application (see @relay/shared).
  *
- * NOTE: identity tables (users, sessions, memberships) are added in Phase 1
- * alongside the auth library, which generates its own schema.
+ * Identity tables (users, sessions, accounts, verifications, members,
+ * invitations) follow the shape Better Auth expects (see ADR-0007): Drizzle
+ * property names must match Better Auth field names; SQL columns stay
+ * snake_case. Better Auth's `organization` model maps onto our `organizations`.
  */
 import { sql } from 'drizzle-orm';
 import {
   bigint,
+  boolean,
   index,
   integer,
   jsonb,
@@ -33,15 +36,135 @@ const updatedAt = () =>
     .defaultNow()
     .$onUpdate(() => new Date());
 
+// ─── Identity (Better Auth) ─────────────────────────────────────────────────
+
+export const users = pgTable('users', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  email: text('email').notNull().unique(),
+  emailVerified: boolean('email_verified').notNull().default(false),
+  image: text('image'),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const sessions = pgTable(
+  'sessions',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** Opaque random token stored in the session cookie. */
+    token: text('token').notNull().unique(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    ipAddress: text('ip_address'),
+    userAgent: text('user_agent'),
+    /** Organization the dashboard is currently scoped to. */
+    activeOrganizationId: text('active_organization_id'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('sessions_user_idx').on(t.userId)],
+);
+
+/** Login methods per user: one row per OAuth provider, plus `credential` for email/password. */
+export const accounts = pgTable(
+  'accounts',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** The user's id at the provider (or the user id for `credential`). */
+    accountId: text('account_id').notNull(),
+    providerId: text('provider_id').notNull(),
+    accessToken: text('access_token'),
+    refreshToken: text('refresh_token'),
+    idToken: text('id_token'),
+    accessTokenExpiresAt: timestamp('access_token_expires_at', { withTimezone: true }),
+    refreshTokenExpiresAt: timestamp('refresh_token_expires_at', { withTimezone: true }),
+    scope: text('scope'),
+    /** Password hash (scrypt) for the `credential` provider. */
+    password: text('password'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('accounts_user_idx').on(t.userId),
+    uniqueIndex('accounts_provider_account_uq').on(t.providerId, t.accountId),
+  ],
+);
+
+/** Short-lived tokens: email verification, password reset, OAuth state. */
+export const verifications = pgTable(
+  'verifications',
+  {
+    id: text('id').primaryKey(),
+    identifier: text('identifier').notNull(),
+    value: text('value').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('verifications_identifier_idx').on(t.identifier)],
+);
+
 // ─── Tenancy ────────────────────────────────────────────────────────────────
 
 export const organizations = pgTable('organizations', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   slug: text('slug').notNull().unique(),
+  logo: text('logo'),
+  /** Better Auth stores organization metadata as a JSON string. */
+  metadata: text('metadata'),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
+
+export const members = pgTable(
+  'members',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** `owner` | `admin` | `member` */
+    role: text('role').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('members_org_user_uq').on(t.organizationId, t.userId),
+    index('members_user_idx').on(t.userId),
+  ],
+);
+
+export const invitations = pgTable(
+  'invitations',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    email: text('email').notNull(),
+    role: text('role'),
+    /** `pending` | `accepted` | `rejected` | `canceled` */
+    status: text('status').notNull().default('pending'),
+    inviterId: text('inviter_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('invitations_org_idx').on(t.organizationId),
+    index('invitations_email_idx').on(t.email),
+  ],
+);
 
 export const environmentKind = pgEnum('environment_kind', ['development', 'production']);
 

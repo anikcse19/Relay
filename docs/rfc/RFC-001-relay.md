@@ -120,4 +120,5 @@ See [`packages/db/src/schema.ts`](../../packages/db/src/schema.ts). Core entitie
 ## 9. Open questions
 
 - Ordering guarantees per endpoint: offer opt-in FIFO mode (serialised per endpoint)?
-- Identity: map Better Auth's organization/member model onto `organizations` (Phase 1).
+- ~~Identity: map Better Auth's organization/member model onto `organizations` (Phase 1).~~
+  Resolved in [ADR-0007](../adr/0007-authentication-better-auth.md).

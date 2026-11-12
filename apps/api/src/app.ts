@@ -2,6 +2,9 @@ import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import type { Logger } from 'pino';
 import { AppModule, type AppModuleOptions } from './app.module.js';
+import type { Auth } from './auth/auth.js';
+import { registerAuthRoutes } from './auth/auth.routes.js';
+import { AUTH } from './auth/auth.tokens.js';
 import { loggerOptions, PinoNestLogger } from './common/logger.js';
 import { ProblemDetailsFilter } from './common/problem-details.filter.js';
 import { genRequestId, REQUEST_ID_HEADER } from './common/request-id.js';
@@ -41,6 +44,7 @@ export async function createApp(options: AppModuleOptions): Promise<NestFastifyA
     done();
   });
 
+  registerAuthRoutes(fastify, app.get<Auth>(AUTH));
   setupOpenApi(app);
   return app;
 }
